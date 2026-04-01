@@ -3,7 +3,23 @@ const express = require("express");
 const cors    = require("cors");
 const app     = express();
 
-app.use(cors({ origin: "http://localhost:3000", credentials: true }));
+app.use(cors({ 
+  origin: function(origin, callback) {
+    if (!origin || origin.includes('vercel.app') || origin.includes('localhost')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true 
+}));
+```
+
+Save with **Ctrl + S** then push:
+```
+git add .
+git commit -m "fix: update CORS for Vercel deployment"
+git push
 app.use(express.json());
 
 // Routes
