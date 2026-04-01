@@ -3,16 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const app = express();
 
-app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin || origin.includes("vercel.app") || origin.includes("localhost")) {
-      callback(null, true);
-    } else {
-      callback(new Error("Not allowed by CORS"));
-    }
-  },
-  credentials: true,
-}));
+app.use(cors({ origin: "*" }));
 
 app.use(express.json());
 
@@ -24,3 +15,16 @@ app.get("/", (_req, res) => res.json({ message: "Clinica Veterinaria API running
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+```
+
+1. Open `server/index.js`
+2. **Ctrl + A** to select all
+3. Delete
+4. Paste this
+5. **Ctrl + S**
+
+Then in terminal:
+```
+git add .
+git commit -m "fix: open CORS"
+git push
