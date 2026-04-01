@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import axios from "axios";
+import api from "../utils/api";
 import { useAuth } from "../context/AuthContext";
 
 const LOGO = process.env.PUBLIC_URL + "/logo.jpg";
@@ -19,11 +19,11 @@ export default function Login() {
     e.preventDefault();
     setError(""); setLoading(true);
     try {
-      const url = isAdmin ? "/api/auth/admin/login" : "/api/auth/login";
+    const url = isAdmin ? "/auth/admin/login" : "/auth/login";
       const payload = isAdmin
         ? { email: form.username, password: form.password }
         : { username: form.username, password: form.password };
-      const { data } = await axios.post(url, payload);
+      const { data } = await api.post(url, payload);
       login(data.token, data.user);
       navigate(data.user.role === "admin" ? "/dashboard" : "/home");
     } catch (err) {
