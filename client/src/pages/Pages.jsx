@@ -3,7 +3,6 @@ import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
 
-// ── Helpers ────────────────────────────────────────────────
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -11,9 +10,101 @@ function toYMD(y, m, d) {
   return `${y}-${String(m+1).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
 }
 
-// ════════════════════════════════════════════════════════════
-// CALENDAR PAGE
-// ════════════════════════════════════════════════════════════
+function PetModal({ pet, onClose }) {
+  const [appts, setAppts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [photo, setPhoto] = useState(localStorage.getItem(`pet_photo_${pet.pet_id}`) || null);
+
+  useEffect(() => {
+    axios.get("/api/appointments")
+      .then(r => setAppts(r.data.filter(a => a.pet_id === pet.pet_id)))
+      .finally(() => setLoading(false));
+  }, [pet.pet_id]);
+
+  const handlePhotoUpload = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      localStorage.setItem(`pet_photo_${pet.pet_id}`, reader.result);
+      setPhoto(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div style={{
+      position:"fixed", top:0, left:0, right:0, bottom:0,
+      background:"rgba(0,0,0,0.6)", display:"flex",
+      alignItems:"center", justifyContent:"center", zIndex:1000
+    }} onClick={onClose}>
+      <div className="card" style={{ width:480, margin:0, maxHeight:"80vh", overflowY:"auto" }}
+        onClick={e => e.stopPropagation()}>
+        <div className="flex-between" style={{ marginBottom:16 }}>
+          <div className="card-title" style={{ margin:0 }}>Pet Profile</div>
+          <button className="btn btn-outline btn-sm" onClick={onClose}>✕ Close</button>
+        </div>
+
+        <div style={{ textAlign:"center", marginBottom:20 }}>
+          {photo ? (
+            <img src={photo} alt={pet.pet_name}
+              style={{ width:90, height:90, borderRadius:"50%", objectFit:"cover",
+                border:"3px solid var(--crimson)", marginBottom:10 }}/>
+          ) : (
+            <div style={{ width:90, height:90, borderRadius:"50%", background:"var(--mid-gray)",
+              display:"flex", alignItems:"center", justifyContent:"center",
+              fontSize:36, margin:"0 auto 10px" }}>🐾</div>
+          )}
+          <div style={{ fontSize:18, fontWeight:700, color:"var(--charcoal)" }}>{pet.pet_name}</div>
+          <div className="text-muted">{pet.type} · {pet.breed}</div>
+
+          <label style={{
+            display:"inline-block", marginTop:10, padding:"5px 14px",
+            borderRadius:"var(--radius)", border:"1.5px solid var(--crimson)",
+            color:"var(--crimson)", fontSize:12, fontWeight:600,
+            cursor:"pointer", background:"transparent"
+          }}>
+            📷 {photo ? "Change Photo" : "Upload Photo"}
+            <input type="file" accept="image/*" style={{ display:"none" }}
+              onChange={handlePhotoUpload}/>
+          </label>
+        </div>
+
+        <div className="divider"/>
+
+        {[
+          ["Name", pet.pet_name],
+          ["Type", pet.type || "—"],
+          ["Breed", pet.breed || "—"],
+          ["Status", pet.registered_in_clinic ? "Registered ✓" : "Unregistered"],
+        ].map(([k,v]) => (
+          <div key={k} className="flex-between" style={{ padding:"8px 0", borderBottom:"1px solid var(--mid-gray)", fontSize:13 }}>
+            <span style={{ color:"var(--muted)" }}>{k}</span>
+            <strong style={{ color: k==="Status" && pet.registered_in_clinic ? "var(--green)" : "var(--charcoal)" }}>{v}</strong>
+          </div>
+        ))}
+
+        <div className="divider"/>
+        <div className="card-title">Appointment History</div>
+        {loading ? <div className="spinner"/> : appts.length === 0
+          ? <p className="text-muted">No appointments yet.</p>
+          : appts.map(a => (
+            <div key={a.appointment_id} className="flex-between" style={{
+              padding:"10px 0", borderBottom:"1px solid var(--mid-gray)", fontSize:13
+            }}>
+              <div>
+                <strong>{a.appt_date} at {a.appt_time}</strong>
+                <div className="text-muted">{a.services || "No services"} · {a.reason_for_visit || "—"}</div>
+              </div>
+              <span className={`badge badge-${a.status}`}>{a.status}</span>
+            </div>
+          ))
+        }
+      </div>
+    </div>
+  );
+}
+
 export function CalendarPage() {
   const now = new Date();
   const [year,  setYear]  = useState(now.getFullYear());
@@ -22,7 +113,7 @@ export function CalendarPage() {
   const [slots, setSlots] = useState([]);
   const [blackout, setBlackout] = useState(false);
   const [blackouts, setBlackouts] = useState([]);
-  const [booked, setBooked]   = useState({});
+  const [booked, setBooked] = useState({});
   const navigate = useNavigate();
   const { user } = useAuth();
 
@@ -85,7 +176,6 @@ export function CalendarPage() {
             ))}
           </div>
         </div>
-
         <div className="card">
           <div className="card-title">
             {selected ? `Slots for ${selected}` : "Select a date"}
@@ -117,19 +207,18 @@ export function CalendarPage() {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// BOOK APPOINTMENT PAGE
-// ════════════════════════════════════════════════════════════
 export function BookAppointment() {
   const [step, setStep] = useState(1);
   const [pets, setPets] = useState([]);
   const [services, setServices] = useState([]);
   const [form, setForm] = useState({
     pet_id:"", appt_date:"", appt_time:"", reason_for_visit:"",
-    notif_preference:"both", service_ids:[]
+    notif_preference:"email", service_ids:[]
   });
   const [newPet, setNewPet] = useState({ pet_name:"", type:"", breed:"" });
-  const [error, setError]   = useState("");
+  const [petPhotoPreview, setPetPhotoPreview] = useState(null);
+  const [petPhotoBase64, setPetPhotoBase64] = useState(null);
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -145,13 +234,30 @@ export function BookAppointment() {
     if (prefTime) setForm(f => ({...f, appt_time:prefTime}));
   }, []);
 
+  const handlePhotoChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setPetPhotoPreview(reader.result);
+      setPetPhotoBase64(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const addPet = async () => {
     if (!newPet.pet_name) return;
     const r = await axios.post("/api/pets", newPet);
+    const newPetId = r.data.pet_id;
+    if (petPhotoBase64) {
+      localStorage.setItem(`pet_photo_${newPetId}`, petPhotoBase64);
+    }
     const updated = await axios.get("/api/pets");
     setPets(updated.data);
-    setForm(f => ({...f, pet_id: r.data.pet_id}));
+    setForm(f => ({...f, pet_id: newPetId}));
     setNewPet({ pet_name:"", type:"", breed:"" });
+    setPetPhotoPreview(null);
+    setPetPhotoBase64(null);
   };
 
   const toggleService = id => {
@@ -164,7 +270,7 @@ export function BookAppointment() {
   };
 
   const submit = async () => {
-    setError(""); setLoading(true);
+    setError(""); setSuccess(""); setLoading(true);
     try {
       await axios.post("/api/appointments", form);
       setSuccess("Appointment booked! A confirmation will be sent to you. (R15)");
@@ -174,6 +280,9 @@ export function BookAppointment() {
     } finally { setLoading(false); }
   };
 
+  const selectedPet = pets.find(p => p.pet_id == form.pet_id);
+  const selectedPetPhoto = selectedPet ? localStorage.getItem(`pet_photo_${selectedPet.pet_id}`) : null;
+
   const STEPS = ["Your Pet","Services","Date & Time","Confirm"];
 
   return (
@@ -182,7 +291,6 @@ export function BookAppointment() {
         <h1>Book an Appointment</h1>
         <p>Complete the steps below to schedule your visit (R19, R20)</p>
       </div>
-
       <div className="two-col">
         <div className="card">
           <div className="steps">
@@ -198,11 +306,9 @@ export function BookAppointment() {
               </div>
             ))}
           </div>
-
           {error   && <div className="alert alert-error">{error}</div>}
           {success && <div className="alert alert-success">{success}</div>}
 
-          {/* Step 1: Pet */}
           {step === 1 && (
             <div>
               <div className="form-group">
@@ -210,9 +316,19 @@ export function BookAppointment() {
                 <select className="form-select" value={form.pet_id}
                   onChange={e => setForm(f=>({...f,pet_id:e.target.value}))}>
                   <option value="">-- Choose a pet --</option>
-                  {pets.map(p => <option key={p.pet_id} value={p.pet_id}>{p.pet_name} ({p.breed})</option>)}
+                  {pets.map(p => (
+                    <option key={p.pet_id} value={p.pet_id}>{p.pet_name} ({p.breed})</option>
+                  ))}
                 </select>
               </div>
+              {selectedPetPhoto && (
+                <div style={{ marginBottom:16, textAlign:"center" }}>
+                  <img src={selectedPetPhoto} alt="Pet"
+                    style={{ width:80, height:80, borderRadius:"50%", objectFit:"cover",
+                      border:"3px solid var(--crimson)" }}/>
+                  <div className="text-muted" style={{ marginTop:4 }}>{selectedPet?.pet_name}</div>
+                </div>
+              )}
               <div className="divider"/>
               <p className="text-muted" style={{ marginBottom:10 }}>Or add a new pet:</p>
               <div className="form-grid">
@@ -231,12 +347,25 @@ export function BookAppointment() {
                   <input className="form-input" value={newPet.breed}
                     onChange={e=>setNewPet(n=>({...n,breed:e.target.value}))} placeholder="Golden Retriever"/>
                 </div>
+                <div className="form-group" style={{ gridColumn:"1/-1" }}>
+                  <label className="form-label">Pet Photo (optional)</label>
+                  <input type="file" accept="image/*" className="form-input"
+                    style={{ padding:"6px 12px", cursor:"pointer" }}
+                    onChange={handlePhotoChange}/>
+                  {petPhotoPreview && (
+                    <div style={{ marginTop:10, display:"flex", alignItems:"center", gap:12 }}>
+                      <img src={petPhotoPreview} alt="Preview"
+                        style={{ width:64, height:64, borderRadius:"50%", objectFit:"cover",
+                          border:"3px solid var(--crimson)" }}/>
+                      <span className="text-muted">Photo preview</span>
+                    </div>
+                  )}
+                </div>
               </div>
               <button className="btn btn-outline btn-sm" onClick={addPet}>+ Add Pet</button>
             </div>
           )}
 
-          {/* Step 2: Services */}
           {step === 2 && (
             <div>
               <p className="text-muted" style={{ marginBottom:12 }}>Select one or more services (R20):</p>
@@ -258,13 +387,13 @@ export function BookAppointment() {
             </div>
           )}
 
-          {/* Step 3: Date & Time */}
           {step === 3 && (
             <div className="form-grid">
               <div className="form-group">
                 <label className="form-label">Preferred Date *</label>
                 <input className="form-input" type="date" value={form.appt_date}
-                  onChange={e=>setForm(f=>({...f,appt_date:e.target.value}))} required/>
+  min={new Date().toISOString().split("T")[0]}
+  onChange={e=>setForm(f=>({...f,appt_date:e.target.value}))} required/>
               </div>
               <div className="form-group">
                 <label className="form-label">Preferred Time *</label>
@@ -283,25 +412,30 @@ export function BookAppointment() {
                   placeholder="e.g. Annual check-up and vaccination"/>
               </div>
               <div className="form-group" style={{ gridColumn:"1/-1" }}>
-                <label className="form-label">Notification Preference (R15, R17)</label>
-                <select className="form-select" value={form.notif_preference}
-                  onChange={e=>setForm(f=>({...f,notif_preference:e.target.value}))}>
-                  <option value="both">Email + SMS</option>
-                  <option value="email">Email only</option>
-                  <option value="sms">SMS only</option>
-                </select>
-              </div>
+  <label className="form-label">Notification Preference (R15)</label>
+  <select className="form-select" value={form.notif_preference}
+    onChange={e=>setForm(f=>({...f,notif_preference:e.target.value}))}>
+    <option value="email">Email Notification</option>
+  </select>
+</div>
             </div>
           )}
 
-          {/* Step 4: Confirm */}
           {step === 4 && (
             <div>
               <div className="alert alert-info" style={{ marginBottom:16 }}>
                 Please review your booking details before confirming.
               </div>
+              {selectedPetPhoto && (
+                <div style={{ textAlign:"center", marginBottom:16 }}>
+                  <img src={selectedPetPhoto} alt="Pet"
+                    style={{ width:72, height:72, borderRadius:"50%", objectFit:"cover",
+                      border:"3px solid var(--crimson)" }}/>
+                  <div className="text-muted" style={{ marginTop:4 }}>{selectedPet?.pet_name}</div>
+                </div>
+              )}
               {[
-                ["Pet", pets.find(p=>p.pet_id==form.pet_id)?.pet_name || "—"],
+                ["Pet", selectedPet?.pet_name || "—"],
                 ["Date", form.appt_date || "—"],
                 ["Time", form.appt_time || "—"],
                 ["Services", services.filter(s=>form.service_ids.includes(s.service_id)).map(s=>s.service_name).join(", ") || "None"],
@@ -331,11 +465,17 @@ export function BookAppointment() {
           </div>
         </div>
 
-        {/* Summary sidebar */}
         <div className="card" style={{ height:"fit-content" }}>
           <div className="card-title">Booking Summary</div>
+          {selectedPetPhoto && (
+            <div style={{ textAlign:"center", marginBottom:12 }}>
+              <img src={selectedPetPhoto} alt="Pet"
+                style={{ width:56, height:56, borderRadius:"50%", objectFit:"cover",
+                  border:"2px solid var(--crimson)" }}/>
+            </div>
+          )}
           {[
-            ["Pet", pets.find(p=>p.pet_id==form.pet_id)?.pet_name || "—"],
+            ["Pet", selectedPet?.pet_name || "—"],
             ["Date", form.appt_date || "—"],
             ["Time", form.appt_time || "—"],
             ["Services", `${form.service_ids.length} selected`],
@@ -351,12 +491,13 @@ export function BookAppointment() {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// MY APPOINTMENTS (CLIENT)
-// ════════════════════════════════════════════════════════════
 export function MyAppointments() {
   const [appts, setAppts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [reschedule, setReschedule] = useState(null);
+  const [newDate, setNewDate] = useState("");
+  const [newTime, setNewTime] = useState("");
+  const [msg, setMsg] = useState("");
 
   const load = () => {
     axios.get("/api/appointments").then(r => setAppts(r.data)).finally(()=>setLoading(false));
@@ -371,6 +512,17 @@ export function MyAppointments() {
     } catch (err) { alert(err.response?.data?.message || "Cannot cancel"); }
   };
 
+  const doReschedule = async () => {
+    try {
+      await axios.patch(`/api/appointments/${reschedule}/reschedule`, {
+        appt_date: newDate, appt_time: newTime
+      });
+      setMsg("Appointment rescheduled!");
+      setReschedule(null);
+      load();
+    } catch (err) { alert(err.response?.data?.message || "Cannot reschedule"); }
+  };
+
   if (loading) return <div className="spinner"/>;
 
   return (
@@ -379,6 +531,37 @@ export function MyAppointments() {
         <h1>My Appointments</h1>
         <p>View and manage your appointment history (R5, R21)</p>
       </div>
+      {msg && <div className="alert alert-success">{msg}</div>}
+      {reschedule && (
+        <div style={{
+          position:"fixed", top:0, left:0, right:0, bottom:0,
+          background:"rgba(0,0,0,0.5)", display:"flex",
+          alignItems:"center", justifyContent:"center", zIndex:999
+        }}>
+          <div className="card" style={{ width:400, margin:0 }}>
+            <div className="card-title">Reschedule Appointment</div>
+            <div className="form-group">
+              <label className="form-label">New Date</label>
+              <input className="form-input" type="date" value={newDate}
+                onChange={e=>setNewDate(e.target.value)}/>
+            </div>
+            <div className="form-group">
+              <label className="form-label">New Time</label>
+              <select className="form-select" value={newTime}
+                onChange={e=>setNewTime(e.target.value)}>
+                <option value="">-- Select time --</option>
+                {["09:00","10:00","11:00","13:00","14:00","15:00","16:00","17:00"].map(t =>
+                  <option key={t} value={t}>{t}</option>
+                )}
+              </select>
+            </div>
+            <div className="flex-gap">
+              <button className="btn btn-primary" onClick={doReschedule}>Confirm</button>
+              <button className="btn btn-outline" onClick={()=>setReschedule(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="card">
         <div className="table-wrap">
           <table>
@@ -393,16 +576,32 @@ export function MyAppointments() {
                 <tr key={a.appointment_id}>
                   <td>{a.appt_date}</td>
                   <td>{a.appt_time}</td>
-                  <td>{a.pet_name} <span className="text-muted">({a.breed})</span></td>
+                  <td>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      {localStorage.getItem(`pet_photo_${a.pet_id}`) && (
+                        <img src={localStorage.getItem(`pet_photo_${a.pet_id}`)} alt=""
+                          style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }}/>
+                      )}
+                      {a.pet_name} <span className="text-muted">({a.breed})</span>
+                    </div>
+                  </td>
                   <td style={{ fontSize:12 }}>{a.services || "—"}</td>
                   <td style={{ fontSize:12 }}>{a.reason_for_visit || "—"}</td>
                   <td><span className={`badge badge-${a.status}`}>{a.status}</span></td>
                   <td>
-                    {(a.status==="pending"||a.status==="confirmed") && (
-                      <button className="btn btn-danger btn-sm" onClick={()=>cancel(a.appointment_id)}>
-                        Cancel
-                      </button>
-                    )}
+                    <div className="flex-gap">
+                      {(a.status==="pending"||a.status==="confirmed") && (
+                        <>
+                          <button className="btn btn-outline btn-sm"
+                            onClick={()=>{ setReschedule(a.appointment_id); setNewDate(""); setNewTime(""); }}>
+                            Reschedule
+                          </button>
+                          <button className="btn btn-danger btn-sm" onClick={()=>cancel(a.appointment_id)}>
+                            Cancel
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -414,28 +613,46 @@ export function MyAppointments() {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// CLIENT RECORDS (ADMIN)
-// ════════════════════════════════════════════════════════════
 export function ClientRecords() {
   const [clients, setClients] = useState([]);
-  const [search, setSearch]   = useState("");
+  const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [expanded, setExpanded] = useState(null);
+  const [pets, setPets] = useState({});
+  const [selectedPet, setSelectedPet] = useState(null);
 
   useEffect(() => {
     axios.get("/api/clients").then(r => setClients(r.data)).finally(()=>setLoading(false));
   }, []);
 
+  const loadPets = async (client_id) => {
+    if (expanded === client_id) { setExpanded(null); return; }
+    setExpanded(client_id);
+    if (!pets[client_id]) {
+      const r = await axios.get("/api/pets");
+      const clientPets = r.data.filter(p => p.client_id === client_id);
+      setPets(prev => ({...prev, [client_id]: clientPets}));
+    }
+  };
+
+  const registerPet = async (pet_id, client_id) => {
+    await axios.patch(`/api/pets/${pet_id}/register`);
+    const r = await axios.get("/api/pets");
+    const clientPets = r.data.filter(p => p.client_id === client_id);
+    setPets(prev => ({...prev, [client_id]: clientPets}));
+  };
+
   const filtered = clients.filter(c =>
     c.full_name.toLowerCase().includes(search.toLowerCase()) ||
     c.email.toLowerCase().includes(search.toLowerCase()) ||
-    c.phone_number.includes(search)
+    (c.phone_number || "").includes(search)
   );
 
   if (loading) return <div className="spinner"/>;
 
   return (
     <div>
+      {selectedPet && <PetModal pet={selectedPet} onClose={() => setSelectedPet(null)}/>}
       <div className="page-header">
         <h1>Client Records</h1>
         <p>Admin-only view — manage all client accounts (R3, R4, R27)</p>
@@ -449,20 +666,66 @@ export function ClientRecords() {
         <div className="table-wrap">
           <table>
             <thead>
-              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Address</th><th>Joined</th></tr>
+              <tr><th>Name</th><th>Email</th><th>Phone</th><th>Address</th><th>Joined</th><th>Pets</th></tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td colSpan={5} className="text-center text-muted" style={{ padding:24 }}>No clients found</td></tr>
+                <tr><td colSpan={6} className="text-center text-muted" style={{ padding:24 }}>No clients found</td></tr>
               )}
               {filtered.map(c => (
-                <tr key={c.client_id}>
-                  <td><strong>{c.full_name}</strong></td>
-                  <td>{c.email}</td>
-                  <td>{c.phone_number}</td>
-                  <td style={{ fontSize:12 }}>{c.address || "—"}</td>
-                  <td style={{ fontSize:12, color:"var(--muted)" }}>{c.created_at?.split("T")[0]}</td>
-                </tr>
+                <>
+                  <tr key={c.client_id}>
+                    <td><strong>{c.full_name}</strong></td>
+                    <td>{c.email}</td>
+                    <td>{c.phone_number}</td>
+                    <td style={{ fontSize:12 }}>{c.address || "—"}</td>
+                    <td style={{ fontSize:12, color:"var(--muted)" }}>{c.created_at?.split("T")[0]}</td>
+                    <td>
+                      <button className="btn btn-outline btn-sm" onClick={() => loadPets(c.client_id)}>
+                        {expanded === c.client_id ? "Hide Pets ▲" : "View Pets ▼"}
+                      </button>
+                    </td>
+                  </tr>
+                  {expanded === c.client_id && (
+                    <tr key={`pets-${c.client_id}`}>
+                      <td colSpan={6} style={{ background:"var(--bg)", padding:"12px 20px" }}>
+                        {!pets[c.client_id] || pets[c.client_id].length === 0
+                          ? <p className="text-muted">No pets registered yet.</p>
+                          : pets[c.client_id].map(p => (
+                            <div key={p.pet_id} className="flex-between" style={{
+                              padding:"10px 0", borderBottom:"1px solid var(--mid-gray)"
+                            }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                                {localStorage.getItem(`pet_photo_${p.pet_id}`) && (
+                                  <img src={localStorage.getItem(`pet_photo_${p.pet_id}`)} alt=""
+                                    style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }}/>
+                                )}
+                                <div>
+                                  <strong style={{ cursor:"pointer", color:"var(--crimson)" }}
+                                    onClick={() => setSelectedPet(p)}>{p.pet_name}</strong>
+                                  <span className="text-muted"> · {p.type} · {p.breed}</span>
+                                </div>
+                              </div>
+                              <div className="flex-gap">
+                                <button className="btn btn-outline btn-sm"
+                                  onClick={() => setSelectedPet(p)}>View Profile</button>
+                                <span className={`badge ${p.registered_in_clinic?"badge-confirmed":"badge-pending"}`}>
+                                  {p.registered_in_clinic ? "Registered" : "Unregistered"}
+                                </span>
+                                {!p.registered_in_clinic && (
+                                  <button className="btn btn-success btn-sm"
+                                    onClick={() => registerPet(p.pet_id, c.client_id)}>
+                                    Register Pet
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))
+                        }
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
             </tbody>
           </table>
@@ -472,9 +735,6 @@ export function ClientRecords() {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// NOTIFICATIONS
-// ════════════════════════════════════════════════════════════
 export function Notifications() {
   const [notifs, setNotifs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -513,15 +773,13 @@ export function Notifications() {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// PROFILE (CLIENT)
-// ════════════════════════════════════════════════════════════
 export function Profile() {
   const [profile, setProfile] = useState({});
-  const [pets, setPets]       = useState([]);
+  const [pets, setPets] = useState([]);
   const [editing, setEditing] = useState(false);
-  const [form, setForm]       = useState({});
-  const [msg, setMsg]         = useState("");
+  const [form, setForm] = useState({});
+  const [msg, setMsg] = useState("");
+  const [selectedPet, setSelectedPet] = useState(null);
 
   useEffect(() => {
     axios.get("/api/clients/me").then(r => { setProfile(r.data); setForm(r.data); });
@@ -537,6 +795,7 @@ export function Profile() {
 
   return (
     <div>
+      {selectedPet && <PetModal pet={selectedPet} onClose={() => setSelectedPet(null)}/>}
       <div className="page-header">
         <h1>My Profile</h1>
         <p>View and manage your account information (R6, R27)</p>
@@ -586,20 +845,36 @@ export function Profile() {
             </>
           )}
         </div>
-
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           <div className="card">
             <div className="card-title">My Pets (R7)</div>
             {pets.length === 0 && <p className="text-muted">No pets registered yet. Add a pet when booking.</p>}
             {pets.map(p => (
               <div key={p.pet_id} className="flex-between" style={{ padding:"10px 0", borderBottom:"1px solid var(--mid-gray)" }}>
-                <div>
-                  <strong>{p.pet_name}</strong>
-                  <div className="text-muted">{p.type} · {p.breed}</div>
+                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  {localStorage.getItem(`pet_photo_${p.pet_id}`) ? (
+                    <img src={localStorage.getItem(`pet_photo_${p.pet_id}`)} alt=""
+                      style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover",
+                        border:"2px solid var(--crimson)", cursor:"pointer" }}
+                      onClick={() => setSelectedPet(p)}/>
+                  ) : (
+                    <div style={{ width:40, height:40, borderRadius:"50%", background:"var(--mid-gray)",
+                      display:"flex", alignItems:"center", justifyContent:"center",
+                      fontSize:18, cursor:"pointer" }}
+                      onClick={() => setSelectedPet(p)}>🐾</div>
+                  )}
+                  <div>
+                    <strong style={{ cursor:"pointer", color:"var(--crimson)" }}
+                      onClick={() => setSelectedPet(p)}>{p.pet_name}</strong>
+                    <div className="text-muted">{p.type} · {p.breed}</div>
+                  </div>
                 </div>
-                <span className={`badge ${p.registered_in_clinic?"badge-confirmed":"badge-pending"}`}>
-                  {p.registered_in_clinic?"Registered":"Unregistered"}
-                </span>
+                <div className="flex-gap">
+                  <button className="btn btn-outline btn-sm" onClick={() => setSelectedPet(p)}>View</button>
+                  <span className={`badge ${p.registered_in_clinic?"badge-confirmed":"badge-pending"}`}>
+                    {p.registered_in_clinic?"Registered":"Unregistered"}
+                  </span>
+                </div>
               </div>
             ))}
           </div>
@@ -609,13 +884,10 @@ export function Profile() {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// SCHEDULE REPORT (ADMIN)
-// ════════════════════════════════════════════════════════════
 export function Report() {
-  const [rows, setRows]   = useState([]);
+  const [rows, setRows] = useState([]);
   const [month, setMonth] = useState(String(new Date().getMonth()+1).padStart(2,"0"));
-  const [year, setYear]   = useState(String(new Date().getFullYear()));
+  const [year, setYear] = useState(String(new Date().getFullYear()));
   const [loading, setLoading] = useState(false);
 
   const load = async () => {
@@ -648,7 +920,6 @@ export function Report() {
           <button className="btn btn-primary" onClick={load}>Filter</button>
           <button className="btn btn-outline" onClick={()=>window.print()}>Print Report</button>
         </div>
-
         <div className="flex-gap" style={{ marginBottom:16 }}>
           <div style={{ padding:"8px 14px",borderRadius:"var(--radius)",background:"var(--green-light)",color:"var(--green)",fontWeight:700,fontSize:13 }}>
             Confirmed: {totals.confirmed}
@@ -663,7 +934,6 @@ export function Report() {
             Total: {rows.length}
           </div>
         </div>
-
         {loading ? <div className="spinner"/> : (
           <div className="table-wrap">
             <table>
@@ -694,16 +964,13 @@ export function Report() {
   );
 }
 
-// ════════════════════════════════════════════════════════════
-// CLIENT HOME PAGE
-// ════════════════════════════════════════════════════════════
 export function ClientHome() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [appts, setAppts] = useState([]);
 
   useEffect(() => {
-    axios.get("/api/appointments").then(r => setAppts(r.data.slice(0,3)));
+    axios.get("/api/appointments").then(r => setAppts(r.data));
   }, []);
 
   return (
@@ -712,7 +979,6 @@ export function ClientHome() {
         <h1>Welcome, {user?.name?.split(" ")[0]}! 🐾</h1>
         <p>Manage your pet appointments at Clinica Veterinaria de Figura</p>
       </div>
-
       <div className="stats-grid" style={{ gridTemplateColumns:"repeat(3,1fr)" }}>
         <div className="stat-card" style={{ cursor:"pointer" }} onClick={()=>navigate("/book")}>
           <div className="stat-label">Book Appointment</div>
@@ -727,16 +993,21 @@ export function ClientHome() {
           <div className="stat-value">{appts.length}</div>
         </div>
       </div>
-
       <div className="card" style={{ marginTop:0 }}>
         <div className="card-title">Recent Appointments</div>
         {appts.length === 0
           ? <p className="text-muted">No appointments yet. <span className="auth-link" onClick={()=>navigate("/book")}>Book your first one!</span></p>
           : appts.map(a => (
             <div key={a.appointment_id} className="flex-between" style={{ padding:"12px 0", borderBottom:"1px solid var(--mid-gray)" }}>
-              <div>
-                <strong>{a.appt_date} at {a.appt_time}</strong>
-                <div className="text-muted">{a.pet_name} · {a.services || "No services"}</div>
+              <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                {localStorage.getItem(`pet_photo_${a.pet_id}`) && (
+                  <img src={localStorage.getItem(`pet_photo_${a.pet_id}`)} alt=""
+                    style={{ width:32, height:32, borderRadius:"50%", objectFit:"cover" }}/>
+                )}
+                <div>
+                  <strong>{a.appt_date} at {a.appt_time}</strong>
+                  <div className="text-muted">{a.pet_name} · {a.services || "No services"}</div>
+                </div>
               </div>
               <span className={`badge badge-${a.status}`}>{a.status}</span>
             </div>

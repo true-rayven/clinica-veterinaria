@@ -14,7 +14,8 @@ export default function Dashboard() {
       axios.get("/api/appointments"),
     ]).then(([s, a]) => {
       setStats(s.data);
-      setAppts(a.data.slice(0, 8));
+      const todayStr = new Date().toISOString().split("T")[0];
+      setAppts(a.data.filter(a => a.appt_date === todayStr));
     }).finally(() => setLoading(false));
   }, []);
 

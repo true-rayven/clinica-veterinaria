@@ -19,10 +19,8 @@ export default function Login() {
     e.preventDefault();
     setError(""); setLoading(true);
     try {
-    const url = isAdmin ? "/auth/admin/login" : "/auth/login";
-      const payload = isAdmin
-        ? { email: form.username, password: form.password }
-        : { username: form.username, password: form.password };
+      const url = isAdmin ? "/auth/admin/login" : "/auth/login";
+      const payload = { email: form.username, password: form.password };
       const { data } = await api.post(url, payload);
       login(data.token, data.user);
       navigate(data.user.role === "admin" ? "/dashboard" : "/home");
@@ -54,10 +52,10 @@ export default function Login() {
 
           <form onSubmit={submit}>
             <div className="form-group">
-              <label className="form-label">{isAdmin ? "Email Address" : "Email or Username"}</label>
+              <label className="form-label">Email Address</label>
               <input className="form-input" name="username" value={form.username}
-                onChange={handle} placeholder={isAdmin ? "admin@clinica.com" : "you@email.com or username"}
-                required autoComplete="username"/>
+                onChange={handle} placeholder="you@email.com"
+                required autoComplete="email"/>
             </div>
             <div className="form-group">
               <label className="form-label">Password</label>

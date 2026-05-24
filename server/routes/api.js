@@ -34,7 +34,7 @@ router.delete("/clients/:id", auth, adminOnly, async (req, res) => {
 
 // ── PETS (R7) ─────────────────────────────────────────────
 router.get("/pets", auth, async (req, res) => {
-  const isAdmin = req.user.role === "admin";
+  const isAdmin = req.user.role === "admin" || req.user.role === "superadmin";
   const [rows] = isAdmin
     ? await db.query("SELECT p.*, c.full_name AS owner FROM pet p JOIN client c ON p.client_id=c.client_id")
     : await db.query("SELECT * FROM pet WHERE client_id=?", [req.user.id]);
@@ -50,7 +50,6 @@ router.post("/pets", auth, async (req, res) => {
   res.status(201).json({ message: "Pet added", pet_id: r.insertId });
 });
 
-// Admin can mark pet as registered in clinic (R7)
 router.patch("/pets/:id/register", auth, adminOnly, async (req, res) => {
   await db.query("UPDATE pet SET registered_in_clinic=1 WHERE pet_id=?", [req.params.id]);
   res.json({ message: "Pet registered in clinic" });
@@ -73,7 +72,7 @@ router.post("/services", auth, adminOnly, async (req, res) => {
 
 // ── NOTIFICATIONS (R15-R18) ───────────────────────────────
 router.get("/notifications", auth, async (req, res) => {
-  const isAdmin = req.user.role === "admin";
+  const isAdmin = req.user.role === "admin" || req.user.role === "superadmin";
   const [rows] = isAdmin
     ? await db.query("SELECT n.*,c.full_name FROM notification n LEFT JOIN client c ON n.client_id=c.client_id ORDER BY n.notif_id DESC LIMIT 50")
     : await db.query("SELECT * FROM notification WHERE client_id=? ORDER BY notif_id DESC", [req.user.id]);
@@ -127,12 +126,27 @@ router.get("/report", auth, adminOnly, async (req, res) => {
 
 // ── DASHBOARD STATS (admin) ───────────────────────────────
 router.get("/dashboard", auth, adminOnly, async (req, res) => {
-  const today = new Date().toISOString().split("T")[0];
-  const [[{ total }]]     = await db.query("SELECT COUNT(*) AS total FROM appointment WHERE appt_date=?", [today]);
-  const [[{ confirmed }]] = await db.query("SELECT COUNT(*) AS confirmed FROM appointment WHERE appt_date=? AND status='confirmed'", [today]);
-  const [[{ pending }]]   = await db.query("SELECT COUNT(*) AS pending FROM appointment WHERE appt_date=? AND status='pending'", [today]);
-  const [[{ cancelled }]] = await db.query("SELECT COUNT(*) AS cancelled FROM appointment WHERE appt_date=? AND status='cancelled'", [today]);
+  const [[{ total }]]     = await db.query("SELECT COUNT(*) AS total FROM appointment WHERE appt_date=CURDATE()");
+  const [[{ confirmed }]] = await db.query("SELECT COUNT(*) AS confirmed FROM appointment WHERE appt_date=CURDATE() AND status='confirmed'");
+  const [[{ pending }]]   = await db.query("SELECT COUNT(*) AS pending FROM appointment WHERE appt_date=CURDATE() AND status='pending'");
+  const [[{ cancelled }]] = await db.query("SELECT COUNT(*) AS cancelled FROM appointment WHERE appt_date=CURDATE() AND status='cancelled'");
   res.json({ today: total, confirmed, pending, cancelled });
+});
+
+// ── ADMIN MANAGEMENT (superadmin only) ───────────────────
+router.get("/admins", auth, async (req, res) => {
+  if (req.user.role !== "superadmin") return res.status(403).json({ message: "Forbidden" });
+  const [rows] = await db.query("SELECT admin_id, full_name, email, role FROM admin");
+  res.json(rows);
+});
+
+router.delete("/admins/:id", auth, async (req, res) => {
+  if (req.user.role !== "superadmin") return res.status(403).json({ message: "Forbidden" });
+  if (parseInt(req.params.id) === req.user.id) {
+    return res.status(400).json({ message: "You cannot terminate yourself!" });
+  }
+  await db.query("DELETE FROM admin WHERE admin_id=?", [req.params.id]);
+  res.json({ message: "Admin terminated" });
 });
 
 module.exports = router;
