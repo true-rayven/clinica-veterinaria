@@ -13,6 +13,9 @@ if (process.env.DATABASE_URL) {
     database: url.pathname.replace("/", ""),
     waitForConnections: true,
     connectionLimit: 10,
+    connectTimeout: 30000,
+    acquireTimeout: 30000,
+    ssl: { rejectUnauthorized: false }
   });
 } else {
   pool = mysql.createPool({
