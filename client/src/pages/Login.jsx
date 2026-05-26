@@ -23,7 +23,7 @@ export default function Login() {
       const payload = { email: form.username, password: form.password };
       const { data } = await api.post(url, payload);
       login(data.token, data.user);
-      navigate(data.user.role === "admin" ? "/dashboard" : "/home");
+      navigate(data.user.role === "admin" || data.user.role === "superadmin" ? "/dashboard" : "/home");
     } catch (err) {
       setError(err.response?.data?.message || "Login failed");
     } finally { setLoading(false); }

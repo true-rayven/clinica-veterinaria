@@ -6,6 +6,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [stats, setStats]   = useState({ today:0, confirmed:0, pending:0, cancelled:0 });
   const [appts, setAppts]   = useState([]);
+  const [pending, setPending] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -16,6 +17,7 @@ export default function Dashboard() {
       setStats(s.data);
       const todayStr = new Date().toISOString().split("T")[0];
       setAppts(a.data.filter(a => a.appt_date === todayStr));
+      setPending(a.data.filter(a => a.status === "pending"));
     }).finally(() => setLoading(false));
   }, []);
 
@@ -24,6 +26,7 @@ export default function Dashboard() {
   const updateStatus = async (id, status) => {
     await axios.patch(`/api/appointments/${id}/status`, { status });
     setAppts(prev => prev.map(a => a.appointment_id === id ? {...a, status} : a));
+    setPending(prev => prev.filter(a => a.appointment_id !== id));
   };
 
   if (loading) return <div className="spinner"/>;
@@ -55,39 +58,93 @@ export default function Dashboard() {
       </div>
 
       <div className="two-col">
-        <div className="card">
-          <div className="card-title">Today's Schedule</div>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th><th>Client</th><th>Pet</th><th>Services</th><th>Status</th><th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {appts.length === 0 && (
-                  <tr><td colSpan={6} className="text-center text-muted" style={{ padding:24 }}>No appointments today</td></tr>
-                )}
-                {appts.map(a => (
-                  <tr key={a.appointment_id}>
-                    <td style={{ fontWeight:600 }}>{a.appt_time}</td>
-                    <td>{a.client_name}</td>
-                    <td><div>{a.pet_name}</div><div className="text-muted">{a.breed}</div></td>
-                    <td style={{ fontSize:12 }}>{a.services || "—"}</td>
-                    <td><span className={`badge badge-${a.status}`}>{a.status}</span></td>
-                    <td>
-                      {a.status === "pending" && (
-                        <button className="btn btn-success btn-sm"
-                          onClick={() => updateStatus(a.appointment_id, "confirmed")}>
-                          Confirm
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          {/* Today's Schedule */}
+          <div className="card">
+            <div className="card-title">Today's Schedule</div>
+            {appts.length === 0
+              ? <p className="text-muted" style={{ padding:"12px 0" }}>No appointments today</p>
+              : appts.map(a => (
+                <div key={a.appointment_id} className="appt-card-mobile">
+                  <div className="appt-card-row">
+                    <span className="appt-card-label">Time</span>
+                    <span className="appt-card-value">{a.appt_time}</span>
+                  </div>
+                  <div className="appt-card-row">
+                    <span className="appt-card-label">Client</span>
+                    <span className="appt-card-value">{a.client_name}</span>
+                  </div>
+                  <div className="appt-card-row">
+                    <span className="appt-card-label">Pet</span>
+                    <span className="appt-card-value">{a.pet_name} <span className="text-muted">({a.breed})</span></span>
+                  </div>
+                  <div className="appt-card-row">
+                    <span className="appt-card-label">Services</span>
+                    <span className="appt-card-value">{a.services || "—"}</span>
+                  </div>
+                  <div className="appt-card-row">
+                    <span className="appt-card-label">Status</span>
+                    <span className={`badge badge-${a.status}`}>{a.status}</span>
+                  </div>
+                  {a.status === "pending" && (
+                    <div className="appt-card-actions">
+                      <button className="btn btn-success btn-sm"
+                        onClick={() => updateStatus(a.appointment_id, "confirmed")}>
+                        Confirm
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))
+            }
           </div>
+
+          {/* Pending Appointments */}
+          {pending.length > 0 && (
+            <div className="card">
+              <div className="card-title">
+                🕐 Pending Appointments
+                <span style={{ marginLeft:8, background:"var(--amber)", color:"#fff",
+                  borderRadius:99, padding:"2px 10px", fontSize:12 }}>
+                  {pending.length}
+                </span>
+              </div>
+              {pending.map(a => (
+                <div key={a.appointment_id} className="appt-card-mobile">
+                  <div className="appt-card-row">
+                    <span className="appt-card-label">Date</span>
+                    <span className="appt-card-value">{a.appt_date}</span>
+                  </div>
+                  <div className="appt-card-row">
+                    <span className="appt-card-label">Time</span>
+                    <span className="appt-card-value">{a.appt_time || "—"}</span>
+                  </div>
+                  <div className="appt-card-row">
+                    <span className="appt-card-label">Client</span>
+                    <span className="appt-card-value">{a.client_name}</span>
+                  </div>
+                  <div className="appt-card-row">
+                    <span className="appt-card-label">Pet</span>
+                    <span className="appt-card-value">{a.pet_name} <span className="text-muted">({a.breed})</span></span>
+                  </div>
+                  <div className="appt-card-row">
+                    <span className="appt-card-label">Services</span>
+                    <span className="appt-card-value">{a.services || "—"}</span>
+                  </div>
+                  <div className="appt-card-actions">
+                    <button className="btn btn-success btn-sm"
+                      onClick={() => updateStatus(a.appointment_id, "confirmed")}>
+                      ✓ Confirm
+                    </button>
+                    <button className="btn btn-danger btn-sm"
+                      onClick={() => updateStatus(a.appointment_id, "cancelled")}>
+                      ✕ Cancel
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
@@ -122,8 +179,12 @@ function QuickControl() {
       <div className="card">
         <div className="card-title">Clinic Hours</div>
         <div style={{ fontSize:13 }}>
-          <div className="flex-between mb-4"><span>Mon–Sat</span><strong>8:00 AM – 6:00 PM</strong></div>
-          <div className="flex-between"><span>Sunday</span><strong style={{ color:"var(--muted)" }}>Closed</strong></div>
+          <div className="flex-between" style={{ marginBottom:8 }}>
+            <span>Mon–Sat</span><strong>8:00 AM – 6:00 PM</strong>
+          </div>
+          <div className="flex-between">
+            <span>Sunday</span><strong style={{ color:"var(--muted)" }}>Closed</strong>
+          </div>
         </div>
       </div>
 
@@ -136,7 +197,7 @@ function QuickControl() {
           </div>
         ))}
         <div className="divider"/>
-        <div className="form-grid" style={{ marginBottom:8 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:8, marginBottom:8 }}>
           <input className="form-input" type="date" value={newDate} onChange={e=>setNewDate(e.target.value)}/>
           <input className="form-input" placeholder="Reason" value={newReason} onChange={e=>setNewReason(e.target.value)}/>
         </div>

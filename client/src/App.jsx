@@ -62,11 +62,18 @@ function AppRoutes() {
 
 export default function App() {
   const [dark, setDark] = useState(() => localStorage.getItem("theme") === "dark");
+  const [isMobile, setIsMobile] = useState(window.innerWidth <= 768);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
     localStorage.setItem("theme", dark ? "dark" : "light");
   }, [dark]);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth <= 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   return (
     <AuthProvider>
@@ -76,7 +83,9 @@ export default function App() {
           onClick={() => setDark(d => !d)}
           title="Toggle Dark Mode"
           style={{
-            position: "fixed", bottom: 24, right: 24,
+            position: "fixed",
+            bottom: isMobile ? 70 : 24,
+            right: 24,
             width: 44, height: 44, borderRadius: "50%",
             background: dark ? "#f0eded" : "#1c1c1c",
             color: dark ? "#1c1c1c" : "#f0eded",

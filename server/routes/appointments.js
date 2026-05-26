@@ -3,11 +3,11 @@ const db     = require("../config/db");
 const { auth, adminOnly } = require("../middleware/auth");
 const { sendAppointmentEmail } = require("./auth");
 
-// GET /api/appointments — admin sees all, client sees own
+// GET /api/appointments – admin sees all, client sees own
 router.get("/", auth, async (req, res) => {
   try {
     let rows;
-    if (req.user.role === "admin") {
+    if (req.user.role === "admin" || req.user.role === "superadmin") {
       [rows] = await db.query(`
         SELECT a.*, c.full_name AS client_name, p.pet_name, p.breed,
                GROUP_CONCAT(s.service_name SEPARATOR ', ') AS services
@@ -58,12 +58,17 @@ router.get("/available", async (req, res) => {
   }
 });
 
-// POST /api/appointments — book (R19, R20)
+// POST /api/appointments – book (R19, R20)
 router.post("/", auth, async (req, res) => {
   const { pet_id, appt_date, appt_time, reason_for_visit, notif_preference, service_ids } = req.body;
-  console.log("=== NEW BOOKING REQUEST ===");
-  console.log("Client ID:", req.user.id, "Date:", appt_date, "Time:", appt_time);
   try {
+    // ✅ CHECK 1: Blackout date check
+    const [blk] = await db.query(
+      "SELECT * FROM blackout_date WHERE blackout_date=?", [appt_date]
+    );
+    if (blk.length) return res.status(400).json({ message: "This date is a clinic holiday / blackout date. Please choose another date." });
+
+    // ✅ CHECK 2: Slot already taken
     const [taken] = await db.query(
       "SELECT * FROM appointment WHERE appt_date=? AND appt_time=? AND status != 'cancelled'",
       [appt_date, appt_time]
@@ -73,10 +78,9 @@ router.post("/", auth, async (req, res) => {
     const [result] = await db.query(
       `INSERT INTO appointment (client_id,pet_id,appt_date,appt_time,reason_for_visit,notif_preference,status)
        VALUES (?,?,?,?,?,?,'pending')`,
-      [req.user.id, pet_id, appt_date, appt_time, reason_for_visit, notif_preference || "both"]
+      [req.user.id, pet_id, appt_date, appt_time, reason_for_visit, notif_preference || "email"]
     );
     const apptId = result.insertId;
-    console.log("Appointment created:", apptId);
 
     if (service_ids?.length) {
       const vals = service_ids.map(sid => [apptId, sid]);
@@ -84,19 +88,16 @@ router.post("/", auth, async (req, res) => {
     }
 
     await db.query(
-      `INSERT INTO notification (appointment_id,client_id,type,channel,message,sent_at,status)
-       VALUES (?,?,'confirmation',?,?,NOW(),'sent')`,
-      [apptId, req.user.id, notif_preference || "both",
-       `Appointment booked for ${appt_date} at ${appt_time}`]
+      `INSERT INTO notification (appointment_id,client_id,type,message,sent_at)
+       VALUES (?,?,'confirmation',?,NOW())`,
+      [apptId, req.user.id, `Appointment booked for ${appt_date} at ${appt_time}`]
     );
 
     const [clientRows] = await db.query("SELECT * FROM client WHERE client_id=?", [req.user.id]);
     const client = clientRows[0];
-    console.log("Client email:", client.email);
 
     // Send confirmation email to client (R15)
     try {
-      console.log("Sending client email...");
       await sendAppointmentEmail(
         client.email,
         client.full_name,
@@ -105,7 +106,6 @@ router.post("/", auth, async (req, res) => {
          We look forward to seeing you and your pet! Please arrive 10 minutes early.<br><br>
          <em>Cancellations must be made at least 24 hours in advance.</em>`
       );
-      console.log("Client email sent!");
     } catch (emailErr) {
       console.error("Client email error:", emailErr.message);
     }
@@ -113,9 +113,7 @@ router.post("/", auth, async (req, res) => {
     // Send notification email to admin (R16)
     try {
       const [admins] = await db.query("SELECT * FROM admin LIMIT 1");
-      console.log("Admin email:", admins[0]?.email);
       if (admins.length) {
-        console.log("Sending admin email...");
         await sendAppointmentEmail(
           admins[0].email,
           admins[0].full_name,
@@ -127,7 +125,6 @@ router.post("/", auth, async (req, res) => {
            <strong>Time:</strong> ${appt_time}<br>
            <strong>Reason:</strong> ${reason_for_visit || "Not specified"}`
         );
-        console.log("Admin email sent!");
       }
     } catch (emailErr) {
       console.error("Admin email error:", emailErr.message);
@@ -135,12 +132,11 @@ router.post("/", auth, async (req, res) => {
 
     res.status(201).json({ message: "Appointment booked!", appointment_id: apptId });
   } catch (err) {
-    console.error("Booking error:", err.message);
     res.status(500).json({ message: err.message });
   }
 });
 
-// PATCH /api/appointments/:id/status — admin update (R3)
+// PATCH /api/appointments/:id/status – admin update (R3)
 router.patch("/:id/status", auth, adminOnly, async (req, res) => {
   const { status } = req.body;
   await db.query("UPDATE appointment SET status=? WHERE appointment_id=?", [status, req.params.id]);
@@ -167,7 +163,7 @@ router.patch("/:id/status", auth, adminOnly, async (req, res) => {
   res.json({ message: "Status updated" });
 });
 
-// PATCH /api/appointments/:id/cancel — client cancel with 24hr check (R21)
+// PATCH /api/appointments/:id/cancel – client cancel with 24hr check (R21)
 router.patch("/:id/cancel", auth, async (req, res) => {
   const [rows] = await db.query(
     "SELECT * FROM appointment WHERE appointment_id=? AND client_id=?",
@@ -181,8 +177,8 @@ router.patch("/:id/cancel", auth, async (req, res) => {
     return res.status(400).json({ message: "Cancellations must be made at least 24 hours in advance (R21)" });
   await db.query("UPDATE appointment SET status='cancelled' WHERE appointment_id=?", [req.params.id]);
   await db.query(
-    `INSERT INTO notification (appointment_id,client_id,type,channel,message,sent_at,status)
-     VALUES (?,?,'cancellation','both',?,NOW(),'sent')`,
+    `INSERT INTO notification (appointment_id,client_id,type,message,sent_at)
+     VALUES (?,?,'cancellation',?,NOW())`,
     [req.params.id, req.user.id, `Appointment on ${appt.appt_date} has been cancelled`]
   );
   try {
@@ -214,6 +210,13 @@ router.patch("/:id/reschedule", auth, async (req, res) => {
   const hoursUntil = (apptDateTime - Date.now()) / 36e5;
   if (hoursUntil < 24)
     return res.status(400).json({ message: "Reschedule must be at least 24 hours in advance (R21)" });
+
+  // ✅ CHECK: Blackout date on reschedule too
+  const [blk] = await db.query(
+    "SELECT * FROM blackout_date WHERE blackout_date=?", [appt_date]
+  );
+  if (blk.length) return res.status(400).json({ message: "Cannot reschedule to a blackout date. Please choose another date." });
+
   await db.query(
     "UPDATE appointment SET appt_date=?, appt_time=?, status='pending' WHERE appointment_id=?",
     [appt_date, appt_time, req.params.id]

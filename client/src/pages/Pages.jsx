@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
+import { Calendar } from "lucide-react";
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -211,6 +212,8 @@ export function BookAppointment() {
   const [step, setStep] = useState(1);
   const [pets, setPets] = useState([]);
   const [services, setServices] = useState([]);
+  const [blackouts, setBlackouts] = useState([]);
+  const [dateError, setDateError] = useState("");
   const [form, setForm] = useState({
     pet_id:"", appt_date:"", appt_time:"", reason_for_visit:"",
     notif_preference:"email", service_ids:[]
@@ -230,6 +233,7 @@ export function BookAppointment() {
   useEffect(() => {
     axios.get("/api/pets").then(r => setPets(r.data));
     axios.get("/api/services").then(r => setServices(r.data));
+    axios.get("/api/blackouts").then(r => setBlackouts(r.data.map(b => b.blackout_date)));
     if (prefDate) setForm(f => ({...f, appt_date:prefDate}));
     if (prefTime) setForm(f => ({...f, appt_time:prefTime}));
   }, []);
@@ -369,13 +373,17 @@ export function BookAppointment() {
           {step === 2 && (
             <div>
               <p className="text-muted" style={{ marginBottom:12 }}>Select one or more services (R20):</p>
-              <div className="service-grid">
+              <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
                 {services.map(sv => (
                   <div key={sv.service_id}
                     className={`service-card ${form.service_ids.includes(sv.service_id)?"selected":""}`}
-                    onClick={() => toggleService(sv.service_id)}>
-                    <div className="service-card-name">{sv.service_name}</div>
-                    <div className="service-card-price">₱{sv.price}</div>
+                    onClick={() => toggleService(sv.service_id)}
+                    style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 16px", textAlign:"left" }}>
+                    <div style={{ flex:1 }}>
+                      <div className="service-card-name" style={{ fontSize:13, marginBottom:3 }}>{sv.service_name}</div>
+                      <div style={{ fontSize:11, color:"var(--muted)", lineHeight:1.4 }}>{sv.description}</div>
+                    </div>
+                    <div className="service-card-price" style={{ fontWeight:700, color:"var(--crimson)", marginLeft:12, whiteSpace:"nowrap" }}>₱{Number(sv.price).toLocaleString()}</div>
                   </div>
                 ))}
               </div>
@@ -392,8 +400,17 @@ export function BookAppointment() {
               <div className="form-group">
                 <label className="form-label">Preferred Date *</label>
                 <input className="form-input" type="date" value={form.appt_date}
-  min={new Date().toISOString().split("T")[0]}
-  onChange={e=>setForm(f=>({...f,appt_date:e.target.value}))} required/>
+                  min={new Date().toISOString().split("T")[0]}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setForm(f => ({...f, appt_date: val}));
+                    if (blackouts.includes(val)) {
+                      setDateError("⚠️ This date is a clinic holiday / blackout date. Please choose another.");
+                    } else {
+                      setDateError("");
+                    }
+                  }} required/>
+                {dateError && <div className="alert alert-error" style={{ marginTop:8 }}>{dateError}</div>}
               </div>
               <div className="form-group">
                 <label className="form-label">Preferred Time *</label>
@@ -412,12 +429,11 @@ export function BookAppointment() {
                   placeholder="e.g. Annual check-up and vaccination"/>
               </div>
               <div className="form-group" style={{ gridColumn:"1/-1" }}>
-  <label className="form-label">Notification Preference (R15)</label>
-  <select className="form-select" value={form.notif_preference}
-    onChange={e=>setForm(f=>({...f,notif_preference:e.target.value}))}>
-    <option value="email">Email Notification</option>
-  </select>
-</div>
+                <div className="alert alert-info" style={{ display:"flex", alignItems:"center", gap:10 }}>
+                  <span style={{ fontSize:20 }}>📧</span>
+                  <span>A confirmation email will be sent to you once your appointment is booked. Please wait for it in your inbox. (R15)</span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -440,7 +456,6 @@ export function BookAppointment() {
                 ["Time", form.appt_time || "—"],
                 ["Services", services.filter(s=>form.service_ids.includes(s.service_id)).map(s=>s.service_name).join(", ") || "None"],
                 ["Reason", form.reason_for_visit || "—"],
-                ["Notifications", form.notif_preference],
               ].map(([k,v]) => (
                 <div key={k} className="flex-between" style={{ padding:"10px 0", borderBottom:"1px solid var(--mid-gray)", fontSize:13 }}>
                   <span style={{ color:"var(--muted)" }}>{k}</span>
@@ -457,7 +472,10 @@ export function BookAppointment() {
             {step > 1 && <button className="btn btn-outline" onClick={()=>setStep(s=>s-1)}>← Back</button>}
             {step < 4
               ? <button className="btn btn-primary" onClick={()=>setStep(s=>s+1)}
-                  disabled={step===1&&!form.pet_id}>Continue →</button>
+                  disabled={
+                    (step===1 && !form.pet_id) ||
+                    (step===3 && (!!dateError || !form.appt_date || !form.appt_time))
+                  }>Continue →</button>
               : <button className="btn btn-primary" onClick={submit} disabled={loading}>
                   {loading ? "Booking…" : "Confirm Booking"}
                 </button>
@@ -986,7 +1004,9 @@ export function ClientHome() {
         </div>
         <div className="stat-card green" style={{ cursor:"pointer" }} onClick={()=>navigate("/calendar")}>
           <div className="stat-label">View Calendar</div>
-          <div className="stat-value" style={{ fontSize:22 }}>📅</div>
+          <div className="stat-value" style={{ display:"flex", alignItems:"center" }}>
+            <Calendar size={32}/>
+          </div>
         </div>
         <div className="stat-card amber" style={{ cursor:"pointer" }} onClick={()=>navigate("/my-appointments")}>
           <div className="stat-label">My Appointments</div>
@@ -1009,7 +1029,12 @@ export function ClientHome() {
                   <div className="text-muted">{a.pet_name} · {a.services || "No services"}</div>
                 </div>
               </div>
-              <span className={`badge badge-${a.status}`}>{a.status}</span>
+              <div className="flex-gap">
+                <span className={`badge badge-${a.status}`}>{a.status}</span>
+                <button className="btn btn-outline btn-sm" onClick={()=>navigate("/my-appointments")}>
+                  Manage →
+                </button>
+              </div>
             </div>
           ))
         }

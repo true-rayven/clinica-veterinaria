@@ -23,24 +23,24 @@
 }
 
 [data-theme="dark"] {
-  --crimson:    #c0392b;
-  --red-dark:   #a93226;
-  --red-mid:    #e8a09a;
-  --red-light:  #2c1810;
-  --white:      #1c1c1c;
-  --off-white:  #242424;
-  --bg:         #141414;
-  --mid-gray:   #333333;
-  --muted:      #a0a0a0;
-  --dark:       #f0eded;
-  --charcoal:   #ffffff;
-  --green:      #4caf50;
-  --green-light:#1a2e1a;
-  --amber:      #ff9800;
-  --amber-light:#2e1f0a;
-  --blue:       #64b5f6;
-  --blue-light: #0a1a2e;
-  --shadow:     0 2px 8px rgba(0,0,0,0.5);
+  --crimson:    #E53935;
+  --red-dark:   #B71C1C;
+  --red-mid:    #EF9A9A;
+  --red-light:  #1a0a0a;
+  --white:      #1E1E1E;
+  --off-white:  #252525;
+  --bg:         #121212;
+  --mid-gray:   #2E2E2E;
+  --muted:      #888888;
+  --dark:       #E0E0E0;
+  --charcoal:   #F5F5F5;
+  --green:      #66BB6A;
+  --green-light:#0D1F0D;
+  --amber:      #FFA726;
+  --amber-light:#1F1400;
+  --blue:       #64B5F6;
+  --blue-light: #0A1520;
+  --shadow:     0 2px 12px rgba(0,0,0,0.6);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -366,3 +366,185 @@ tr:hover td { background: var(--off-white); }
   margin: 40px auto;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Mobile Responsive ──────────────────────────────────────── */
+@media (max-width: 768px) {
+
+  .page-content { padding: 14px; }
+  .page-header h1 { font-size: 18px; }
+  .stats-grid { grid-template-columns: repeat(2,1fr); gap: 10px; }
+  .stat-value { font-size: 22px; }
+  .two-col { grid-template-columns: 1fr; gap: 14px; }
+  .form-grid { grid-template-columns: 1fr; }
+  .service-grid { grid-template-columns: repeat(2,1fr); }
+
+  .topbar { padding: 0 14px; }
+  .topbar-brand-name { font-size: 11px; }
+  .topbar-brand-sub  { display: none; }
+  .nav-tab { padding: 6px 8px; font-size: 11px; }
+  .topbar-user-name  { display: none; }
+  .topbar-user-role  { display: none; }
+
+  .auth-page { flex-direction: column; }
+  .auth-left { width: 100%; padding: 24px; min-height: auto; }
+  .auth-left img { width: 70px; height: 70px; }
+  .auth-left h1  { font-size: 18px; }
+  .auth-right    { padding: 20px; }
+  .auth-card     { padding: 24px 20px; }
+
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  td, th { font-size: 12px; padding: 8px 10px; }
+  .card { padding: 14px; }
+  .btn { padding: 8px 14px; font-size: 12px; }
+  .btn-sm { padding: 4px 10px; font-size: 11px; }
+  .notif-time { display: none; }
+  .cal-day { font-size: 11px; }
+  .cal-day-header { font-size: 10px; }
+  .step-dot { width: 24px; height: 24px; font-size: 10px; }
+  .flex-gap { gap: 6px; }
+  .alert { font-size: 12px; padding: 10px 12px; }
+}
+
+@media (max-width: 480px) {
+  .stats-grid { grid-template-columns: repeat(2,1fr); }
+  .service-grid { grid-template-columns: 1fr; }
+  .topbar-nav { gap: 2px; }
+  .nav-tab { padding: 5px 6px; font-size: 10px; }
+}
+
+/* ── Bottom Nav (mobile only) ─────────────────────────────── */
+.bottom-nav {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  /* Hide top nav links on mobile */
+  .desktop-nav { display: none !important; }
+  .topbar-user-name { display: none; }
+  .topbar-user-role { display: none; }
+
+  /* Show bottom nav */
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background: var(--white);
+    border-top: 1px solid var(--mid-gray);
+    z-index: 200;
+    box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+    overflow-x: auto;
+  }
+
+  .bottom-nav-tab {
+    flex: 1;
+    min-width: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    text-decoration: none;
+    padding: 6px 4px;
+    transition: all 0.15s;
+  }
+
+  .bottom-nav-tab.active {
+    color: var(--crimson);
+  }
+
+  .bottom-nav-tab:hover {
+    color: var(--crimson);
+    background: var(--red-light);
+  }
+
+  .bottom-nav-icon { font-size: 18px; line-height: 1; }
+  .bottom-nav-label { font-size: 9px; font-weight: 600; white-space: nowrap; }
+
+  /* Add padding to page content so bottom nav doesn't cover it */
+  .page-content { padding-bottom: 70px; }
+
+  /* Hide dark mode toggle on mobile - it's covered by bottom nav */
+  body > button[title="Toggle Dark Mode"] { bottom: 70px !important; }
+}
+/* ── Admin Mobile Fixes ───────────────────────────────────── */
+@media (max-width: 768px) {
+
+  /* Tighter spacing between cards */
+  .two-col { gap: 10px; }
+  .card { padding: 12px; margin-bottom: 10px; }
+  .card-title { margin-bottom: 10px; font-size: 13px; }
+
+  /* Stats tighter */
+  .stat-card { padding: 12px 14px; }
+  .stat-label { font-size: 10px; }
+  .stat-value { font-size: 20px; }
+
+  /* Tables - make buttons stack and fit */
+  .flex-gap { flex-wrap: nowrap; }
+  .btn-success.btn-sm { padding: 4px 8px; font-size: 11px; }
+  .btn-danger.btn-sm  { padding: 4px 8px; font-size: 11px; }
+
+  /* Clinic hours - prevent text cutoff */
+  .flex-between { flex-wrap: wrap; gap: 4px; }
+
+  /* Blackout date form - stack vertically */
+  .form-grid { grid-template-columns: 1fr; gap: 8px; }
+
+  /* Page header tighter */
+  .page-header { margin-bottom: 12px; }
+  .page-header h1 { font-size: 17px; }
+  .page-header p { font-size: 11px; }
+
+  /* Stats grid tighter */
+  .stats-grid { gap: 8px; margin-bottom: 12px; }
+
+  /* Pending appointments table - fit action column */
+  table { min-width: 500px; }
+  .table-wrap { overflow-x: auto; }
+
+  /* Remove excess padding on page */
+  .page-content { padding: 10px 10px 70px 10px; }
+}
+/* ── Appointment Card Mobile ──────────────────────────────── */
+.appt-card-mobile {
+  border: 1px solid var(--mid-gray);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: var(--off-white);
+}
+.appt-card-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--mid-gray);
+  font-size: 12px;
+}
+.appt-card-row:last-of-type { border-bottom: none; }
+.appt-card-label {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  margin-right: 8px;
+}
+.appt-card-value {
+  color: var(--dark);
+  font-size: 12px;
+  text-align: right;
+}
+.appt-card-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
