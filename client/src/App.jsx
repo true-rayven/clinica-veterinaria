@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
+import { ToastProvider } from "./components/Toast";
 import Topbar from "./components/Topbar";
 import Login from "./pages/Login";
 import { Register, Verify } from "./pages/Register";
@@ -78,26 +79,29 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <AppRoutes/>
-        <button
-          onClick={() => setDark(d => !d)}
-          title="Toggle Dark Mode"
-          style={{
-            position: "fixed",
-            bottom: isMobile ? 70 : 24,
-            right: 24,
-            width: 44, height: 44, borderRadius: "50%",
-            background: dark ? "#f0eded" : "#1c1c1c",
-            color: dark ? "#1c1c1c" : "#f0eded",
-            border: "none", cursor: "pointer",
-            fontSize: 20, display: "flex",
-            alignItems: "center", justifyContent: "center",
-            boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
-            zIndex: 9999, transition: "all 0.2s"
-          }}
-        >
-          {dark ? "☀️" : "🌙"}
-        </button>
+        {/* ✅ ToastProvider wraps everything so any page can trigger toasts */}
+        <ToastProvider>
+          <AppRoutes/>
+          <button
+            onClick={() => setDark(d => !d)}
+            title="Toggle Dark Mode"
+            style={{
+              position: "fixed",
+              bottom: isMobile ? 70 : 24,
+              right: 24,
+              width: 44, height: 44, borderRadius: "50%",
+              background: dark ? "#f0eded" : "#1c1c1c",
+              color: dark ? "#1c1c1c" : "#f0eded",
+              border: "none", cursor: "pointer",
+              fontSize: 20, display: "flex",
+              alignItems: "center", justifyContent: "center",
+              boxShadow: "0 2px 12px rgba(0,0,0,0.3)",
+              zIndex: 9999, transition: "all 0.2s"
+            }}
+          >
+            {dark ? "☀️" : "🌙"}
+          </button>
+        </ToastProvider>
       </BrowserRouter>
     </AuthProvider>
   );

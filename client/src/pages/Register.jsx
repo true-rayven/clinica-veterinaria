@@ -4,7 +4,6 @@ import axios from "axios";
 
 const LOGO = process.env.PUBLIC_URL + "/logo.jpg";
 
-// ── REGISTER ──────────────────────────────────────────────
 export function Register() {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
@@ -104,12 +103,14 @@ export function Register() {
                 <div className="form-group">
                   <label className="form-label">Password * (6–8 chars)</label>
                   <input className="form-input" name="password" type="password" value={form.password}
-                    onChange={handle} placeholder="••••••••" required/>
+                    onChange={handle} placeholder="••••••••" required
+                    inputMode="text" autoComplete="new-password"/>
                 </div>
                 <div className="form-group">
                   <label className="form-label">Confirm Password *</label>
                   <input className="form-input" name="confirm" type="password" value={form.confirm}
-                    onChange={handle} placeholder="••••••••" required/>
+                    onChange={handle} placeholder="••••••••" required
+                    inputMode="text" autoComplete="new-password"/>
                 </div>
                 <div className="alert alert-info" style={{ gridColumn:"1/-1" }}>
                   A 6-digit verification code will be sent to your email/phone (R10)
@@ -145,7 +146,6 @@ export function Register() {
   );
 }
 
-// ── VERIFY ────────────────────────────────────────────────
 export function Verify() {
   const [code, setCode]   = useState("");
   const [error, setError] = useState("");
@@ -186,6 +186,7 @@ export function Verify() {
               <label className="form-label" style={{ textAlign:"left" }}>Verification Code (R10)</label>
               <input className="form-input" value={code} onChange={e=>setCode(e.target.value)}
                 placeholder="Enter 6-digit code" maxLength={6} required
+                inputMode="numeric"
                 style={{ textAlign:"center", fontSize:22, letterSpacing:8 }}/>
             </div>
             <button className="btn btn-primary" style={{ width:"100%",justifyContent:"center",marginTop:8 }}

@@ -60,7 +60,8 @@ export default function Login() {
             <div className="form-group">
               <label className="form-label">Password</label>
               <input className="form-input" name="password" type="password" value={form.password}
-                onChange={handle} placeholder="6–8 alphanumeric characters" required/>
+                onChange={handle} placeholder="6–8 alphanumeric characters" required
+                inputMode="text" autoComplete="current-password"/>
             </div>
             <div style={{ textAlign:"right", marginBottom:16 }}>
               <Link to="/forgot-password" className="auth-link" style={{ fontSize:12 }}>Forgot password?</Link>

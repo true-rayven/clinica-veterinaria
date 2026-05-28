@@ -41,8 +41,14 @@ router.post("/register", async (req, res) => {
   if (password.length < 6 || password.length > 8)
     return res.status(400).json({ message: "Password must be 6-8 characters (R11)" });
   try {
-    const [exists] = await db.query("SELECT client_id FROM client WHERE email=?", [email]);
-    if (exists.length) return res.status(409).json({ message: "Email already in use" });
+    const [exists] = await db.query("SELECT client_id, is_verified FROM client WHERE email=?", [email]);
+    if (exists.length) {
+      if (exists[0].is_verified) {
+        return res.status(409).json({ message: "Email already in use" });
+      } else {
+        await db.query("DELETE FROM client WHERE email=?", [email]);
+      }
+    }
     const hash  = await bcrypt.hash(password, 10);
     const token = genCode();
     await db.query(
@@ -69,47 +75,55 @@ router.post("/verify", async (req, res) => {
   res.json({ message: "Account verified! You can now log in." });
 });
 
-// Client login — no lockout, just wrong password notification
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  const [rows] = await db.query("SELECT * FROM client WHERE email=?", [email]);
-  if (!rows.length) return res.status(401).json({ message: "Incorrect email or password. Please try again." });
-  const user = rows[0];
-  if (!user.is_verified) return res.status(403).json({ message: "Please verify your account first." });
-  const match = await bcrypt.compare(password, user.password_hash);
-  if (!match) return res.status(401).json({ message: "Incorrect email or password. Please try again." });
-  const token = jwt.sign(
-    { id: user.client_id, role: "client", name: user.full_name },
-    process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN }
-  );
-  res.json({ token, user: { id: user.client_id, name: user.full_name, email: user.email, role: "client" } });
+  try {
+    const { email, password } = req.body;
+    const [rows] = await db.query("SELECT * FROM client WHERE email=?", [email]);
+    if (!rows.length) return res.status(401).json({ message: "Incorrect email or password. Please try again." });
+    const user = rows[0];
+    if (!user.is_verified) return res.status(403).json({ message: "Please verify your account first." });
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) return res.status(401).json({ message: "Incorrect email or password. Please try again." });
+    const token = jwt.sign(
+      { id: user.client_id, role: "client", name: user.full_name },
+      process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+    res.json({ token, user: { id: user.client_id, name: user.full_name, email: user.email, role: "client" } });
+  } catch (err) {
+    console.error("Client login error:", err.message);
+    res.status(500).json({ message: "Server error. Please try again." });
+  }
 });
 
-// Admin login — lockout after 3 failed attempts (R14)
 router.post("/admin/login", async (req, res) => {
-  const { email, password } = req.body;
-  const [rows] = await db.query("SELECT * FROM admin WHERE email=?", [email]);
-  if (!rows.length) return res.status(401).json({ message: "Invalid credentials" });
-  const admin = rows[0];
-  if (admin.locked_until && new Date() < new Date(admin.locked_until))
-    return res.status(403).json({ message: "Account locked. Try again after 15 minutes." });
-  const match = await bcrypt.compare(password, admin.password_hash);
-  if (!match) {
-    const attempts = (admin.failed_attempts || 0) + 1;
-    if (attempts >= 3) {
-      const lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
-      await db.query("UPDATE admin SET failed_attempts=?, locked_until=? WHERE email=?", [attempts, lockedUntil, email]);
-      return res.status(403).json({ message: "Account locked after 3 failed attempts. Try again after 15 minutes." });
+  try {
+    const { email, password } = req.body;
+    const [rows] = await db.query("SELECT * FROM admin WHERE email=?", [email]);
+    if (!rows.length) return res.status(401).json({ message: "Invalid credentials" });
+    const admin = rows[0];
+    if (admin.locked_until && new Date() < new Date(admin.locked_until))
+      return res.status(403).json({ message: "Account locked. Try again after 15 minutes." });
+    const match = await bcrypt.compare(password, admin.password_hash);
+    if (!match) {
+      const attempts = (admin.failed_attempts || 0) + 1;
+      if (attempts >= 3) {
+        const lockedUntil = new Date(Date.now() + 15 * 60 * 1000);
+        await db.query("UPDATE admin SET failed_attempts=?, locked_until=? WHERE email=?", [attempts, lockedUntil, email]);
+        return res.status(403).json({ message: "Account locked after 3 failed attempts. Try again after 15 minutes." });
+      }
+      await db.query("UPDATE admin SET failed_attempts=? WHERE email=?", [attempts, email]);
+      return res.status(401).json({ message: `Invalid credentials. ${3 - attempts} attempt(s) remaining.` });
     }
-    await db.query("UPDATE admin SET failed_attempts=? WHERE email=?", [attempts, email]);
-    return res.status(401).json({ message: `Invalid credentials. ${3 - attempts} attempt(s) remaining.` });
+    await db.query("UPDATE admin SET failed_attempts=0, locked_until=NULL WHERE email=?", [email]);
+    const token = jwt.sign(
+      { id: admin.admin_id, role: admin.role, name: admin.full_name },
+      process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN }
+    );
+    res.json({ token, user: { id: admin.admin_id, name: admin.full_name, email: admin.email, role: admin.role } });
+  } catch (err) {
+    console.error("Admin login error:", err.message);
+    res.status(500).json({ message: "Server error. Please try again." });
   }
-  await db.query("UPDATE admin SET failed_attempts=0, locked_until=NULL WHERE email=?", [email]);
-  const token = jwt.sign(
-    { id: admin.admin_id, role: admin.role, name: admin.full_name },
-    process.env.JWT_SECRET, { expiresIn: process.env.JWT_EXPIRES_IN }
-  );
-  res.json({ token, user: { id: admin.admin_id, name: admin.full_name, email: admin.email, role: admin.role } });
 });
 
 router.post("/admin/register", async (req, res) => {

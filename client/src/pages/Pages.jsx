@@ -2,7 +2,15 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { useAuth } from "../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-import { Calendar } from "lucide-react";
+import {
+  Calendar, Camera, PawPrint, Mail, Users, Bell,
+  ClipboardList, CalendarDays, Check, CheckCircle,
+  X, AlertCircle, RotateCcw, Info
+} from "lucide-react";
+import { useToast } from "../components/Toast";
+import { ConfirmModal } from "../components/ConfirmModal";
+import { Skeleton, SkeletonRow } from "../components/Skeleton";
+import { EmptyState } from "../components/EmptyState";
 
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
@@ -12,9 +20,10 @@ function toYMD(y, m, d) {
 }
 
 function PetModal({ pet, onClose }) {
+  const toast = useToast();
   const [appts, setAppts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [photo, setPhoto] = useState(localStorage.getItem(`pet_photo_${pet.pet_id}`) || null);
+  const [photo, setPhoto] = useState(pet.photo || localStorage.getItem(`pet_photo_${pet.pet_id}`) || null);
 
   useEffect(() => {
     axios.get("/api/appointments")
@@ -22,13 +31,31 @@ function PetModal({ pet, onClose }) {
       .finally(() => setLoading(false));
   }, [pet.pet_id]);
 
-  const handlePhotoUpload = (e) => {
+  const handlePhotoUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast("Only image files are allowed (JPG, PNG, GIF, etc.).", "error");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast("Image must be under 2MB. Please choose a smaller file.", "warning");
+      e.target.value = "";
+      return;
+    }
     const reader = new FileReader();
-    reader.onloadend = () => {
-      localStorage.setItem(`pet_photo_${pet.pet_id}`, reader.result);
-      setPhoto(reader.result);
+    reader.onloadend = async () => {
+      const base64 = reader.result;
+      try {
+        await axios.patch(`/api/pets/${pet.pet_id}/photo`, { photo: base64 });
+        toast("Pet photo updated successfully!", "success");
+      } catch (err) {
+        console.error("Photo save error:", err);
+        toast("Failed to save photo. Please try again.", "error");
+      }
+      localStorage.setItem(`pet_photo_${pet.pet_id}`, base64);
+      setPhoto(base64);
     };
     reader.readAsDataURL(file);
   };
@@ -43,7 +70,10 @@ function PetModal({ pet, onClose }) {
         onClick={e => e.stopPropagation()}>
         <div className="flex-between" style={{ marginBottom:16 }}>
           <div className="card-title" style={{ margin:0 }}>Pet Profile</div>
-          <button className="btn btn-outline btn-sm" onClick={onClose}>✕ Close</button>
+          <button className="btn btn-outline btn-sm" onClick={onClose}
+            style={{ display:"flex", alignItems:"center", gap:4 }}>
+            <X size={13}/> Close
+          </button>
         </div>
 
         <div style={{ textAlign:"center", marginBottom:20 }}>
@@ -54,18 +84,21 @@ function PetModal({ pet, onClose }) {
           ) : (
             <div style={{ width:90, height:90, borderRadius:"50%", background:"var(--mid-gray)",
               display:"flex", alignItems:"center", justifyContent:"center",
-              fontSize:36, margin:"0 auto 10px" }}>🐾</div>
+              margin:"0 auto 10px" }}>
+              <PawPrint size={36} color="var(--muted)"/>
+            </div>
           )}
           <div style={{ fontSize:18, fontWeight:700, color:"var(--charcoal)" }}>{pet.pet_name}</div>
           <div className="text-muted">{pet.type} · {pet.breed}</div>
-
           <label style={{
-            display:"inline-block", marginTop:10, padding:"5px 14px",
+            display:"inline-flex", alignItems:"center", gap:6,
+            marginTop:10, padding:"5px 14px",
             borderRadius:"var(--radius)", border:"1.5px solid var(--crimson)",
             color:"var(--crimson)", fontSize:12, fontWeight:600,
             cursor:"pointer", background:"transparent"
           }}>
-            📷 {photo ? "Change Photo" : "Upload Photo"}
+            <Camera size={14}/>
+            {photo ? "Change Photo" : "Upload Photo"}
             <input type="file" accept="image/*" style={{ display:"none" }}
               onChange={handlePhotoUpload}/>
           </label>
@@ -87,20 +120,31 @@ function PetModal({ pet, onClose }) {
 
         <div className="divider"/>
         <div className="card-title">Appointment History</div>
-        {loading ? <div className="spinner"/> : appts.length === 0
-          ? <p className="text-muted">No appointments yet.</p>
-          : appts.map(a => (
-            <div key={a.appointment_id} className="flex-between" style={{
-              padding:"10px 0", borderBottom:"1px solid var(--mid-gray)", fontSize:13
-            }}>
-              <div>
-                <strong>{a.appt_date} at {a.appt_time}</strong>
-                <div className="text-muted">{a.services || "No services"} · {a.reason_for_visit || "—"}</div>
+        {loading ? (
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {[1,2,3].map(i => (
+              <div key={i} style={{ padding:"10px 0", borderBottom:"1px solid var(--mid-gray)" }}>
+                <Skeleton height={14} width="50%" style={{ marginBottom:6 }}/>
+                <Skeleton height={12} width="70%"/>
               </div>
-              <span className={`badge badge-${a.status}`}>{a.status}</span>
+            ))}
+          </div>
+        ) : appts.length === 0 ? (
+          <EmptyState
+            icon={<CalendarDays size={22} color="var(--muted)"/>}
+            title="No appointments yet"
+            message="Appointments will appear here once booked."/>
+        ) : appts.map(a => (
+          <div key={a.appointment_id} className="flex-between" style={{
+            padding:"10px 0", borderBottom:"1px solid var(--mid-gray)", fontSize:13
+          }}>
+            <div>
+              <strong>{a.appt_date} at {a.appt_time}</strong>
+              <div className="text-muted">{a.services || "No services"} · {a.reason_for_visit || "—"}</div>
             </div>
-          ))
-        }
+            <span className={`badge badge-${a.status}`}>{a.status}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -209,6 +253,7 @@ export function CalendarPage() {
 }
 
 export function BookAppointment() {
+  const toast = useToast();
   const [step, setStep] = useState(1);
   const [pets, setPets] = useState([]);
   const [services, setServices] = useState([]);
@@ -241,6 +286,16 @@ export function BookAppointment() {
   const handlePhotoChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      toast("Only image files are allowed (JPG, PNG, GIF, etc.).", "error");
+      e.target.value = "";
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast("Image must be under 2MB. Please choose a smaller file.", "warning");
+      e.target.value = "";
+      return;
+    }
     const reader = new FileReader();
     reader.onloadend = () => {
       setPetPhotoPreview(reader.result);
@@ -254,6 +309,11 @@ export function BookAppointment() {
     const r = await axios.post("/api/pets", newPet);
     const newPetId = r.data.pet_id;
     if (petPhotoBase64) {
+      try {
+        await axios.patch(`/api/pets/${newPetId}/photo`, { photo: petPhotoBase64 });
+      } catch (err) {
+        console.error("Photo save error:", err);
+      }
       localStorage.setItem(`pet_photo_${newPetId}`, petPhotoBase64);
     }
     const updated = await axios.get("/api/pets");
@@ -262,6 +322,7 @@ export function BookAppointment() {
     setNewPet({ pet_name:"", type:"", breed:"" });
     setPetPhotoPreview(null);
     setPetPhotoBase64(null);
+    toast("Pet added successfully!", "success");
   };
 
   const toggleService = id => {
@@ -278,14 +339,18 @@ export function BookAppointment() {
     try {
       await axios.post("/api/appointments", form);
       setSuccess("Appointment booked! A confirmation will be sent to you. (R15)");
+      toast("Appointment booked successfully!", "success");
       setTimeout(() => navigate("/my-appointments"), 2000);
     } catch (err) {
       setError(err.response?.data?.message || "Booking failed");
+      toast(err.response?.data?.message || "Booking failed", "error");
     } finally { setLoading(false); }
   };
 
   const selectedPet = pets.find(p => p.pet_id == form.pet_id);
-  const selectedPetPhoto = selectedPet ? localStorage.getItem(`pet_photo_${selectedPet.pet_id}`) : null;
+  const selectedPetPhoto = selectedPet
+    ? (selectedPet.photo || localStorage.getItem(`pet_photo_${selectedPet.pet_id}`))
+    : null;
 
   const STEPS = ["Your Pet","Services","Date & Time","Confirm"];
 
@@ -302,7 +367,7 @@ export function BookAppointment() {
               <div key={i} style={{ display:"flex", alignItems:"center", flex: i<STEPS.length-1?"1":"0" }}>
                 <div style={{ display:"flex", flexDirection:"column", alignItems:"center" }}>
                   <div className={`step-dot ${i+1<step?"done":i+1===step?"active":""}`}>
-                    {i+1<step?"✓":i+1}
+                    {i+1<step ? <Check size={13}/> : i+1}
                   </div>
                   <span style={{ fontSize:10,color:"var(--muted)",marginTop:3,whiteSpace:"nowrap" }}>{st}</span>
                 </div>
@@ -383,12 +448,20 @@ export function BookAppointment() {
                       <div className="service-card-name" style={{ fontSize:13, marginBottom:3 }}>{sv.service_name}</div>
                       <div style={{ fontSize:11, color:"var(--muted)", lineHeight:1.4 }}>{sv.description}</div>
                     </div>
-                    <div className="service-card-price" style={{ fontWeight:700, color:"var(--crimson)", marginLeft:12, whiteSpace:"nowrap" }}>₱{Number(sv.price).toLocaleString()}</div>
+                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                      {form.service_ids.includes(sv.service_id) && (
+                        <CheckCircle size={16} color="var(--green)" style={{ animation:"popIn 0.2s ease" }}/>
+                      )}
+                      <div className="service-card-price" style={{ fontWeight:700, color:"var(--crimson)", whiteSpace:"nowrap" }}>
+                        ₱{Number(sv.price).toLocaleString()}
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
               {form.service_ids.length > 0 && (
-                <div className="alert alert-success" style={{ marginTop:12 }}>
+                <div className="alert alert-success" style={{ marginTop:12, display:"flex", alignItems:"center", gap:8 }}>
+                  <Check size={14}/>
                   {form.service_ids.length} service{form.service_ids.length>1?"s":""} selected
                 </div>
               )}
@@ -405,12 +478,16 @@ export function BookAppointment() {
                     const val = e.target.value;
                     setForm(f => ({...f, appt_date: val}));
                     if (blackouts.includes(val)) {
-                      setDateError("⚠️ This date is a clinic holiday / blackout date. Please choose another.");
+                      setDateError("This date is a clinic holiday / blackout date. Please choose another.");
                     } else {
                       setDateError("");
                     }
                   }} required/>
-                {dateError && <div className="alert alert-error" style={{ marginTop:8 }}>{dateError}</div>}
+                {dateError && (
+                  <div className="alert alert-error" style={{ marginTop:8, display:"flex", alignItems:"center", gap:8 }}>
+                    <AlertCircle size={14}/> {dateError}
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label className="form-label">Preferred Time *</label>
@@ -430,8 +507,8 @@ export function BookAppointment() {
               </div>
               <div className="form-group" style={{ gridColumn:"1/-1" }}>
                 <div className="alert alert-info" style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  <span style={{ fontSize:20 }}>📧</span>
-                  <span>A confirmation email will be sent to you once your appointment is booked. Please wait for it in your inbox. (R15)</span>
+                  <Mail size={18} style={{ flexShrink:0 }}/>
+                  <span>A confirmation email will be sent to you once your appointment is booked. (R15)</span>
                 </div>
               </div>
             </div>
@@ -462,7 +539,8 @@ export function BookAppointment() {
                   <strong>{v}</strong>
                 </div>
               ))}
-              <div className="alert alert-warning" style={{ marginTop:16 }}>
+              <div className="alert alert-warning" style={{ marginTop:16, display:"flex", alignItems:"center", gap:8 }}>
+                <Info size={14} style={{ flexShrink:0 }}/>
                 Cancellations must be made at least 24 hours before the appointment (R21).
               </div>
             </div>
@@ -510,46 +588,70 @@ export function BookAppointment() {
 }
 
 export function MyAppointments() {
+  const toast = useToast();
+  const navigate = useNavigate();
   const [appts, setAppts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [reschedule, setReschedule] = useState(null);
   const [newDate, setNewDate] = useState("");
   const [newTime, setNewTime] = useState("");
-  const [msg, setMsg] = useState("");
+  const [blackouts, setBlackouts] = useState([]);
+  const [confirmId, setConfirmId] = useState(null);
 
   const load = () => {
     axios.get("/api/appointments").then(r => setAppts(r.data)).finally(()=>setLoading(false));
   };
-  useEffect(load, []);
+  useEffect(() => {
+    load();
+    axios.get("/api/blackouts").then(r => setBlackouts(r.data.map(b => b.blackout_date)));
+  }, []);
 
-  const cancel = async id => {
-    if (!window.confirm("Cancel this appointment?")) return;
+  const cancel = (id) => setConfirmId(id);
+
+  const confirmCancel = async () => {
     try {
-      await axios.patch(`/api/appointments/${id}/cancel`);
+      await axios.patch(`/api/appointments/${confirmId}/cancel`);
+      toast("Appointment cancelled successfully.", "success");
+      setConfirmId(null);
       load();
-    } catch (err) { alert(err.response?.data?.message || "Cannot cancel"); }
+    } catch (err) {
+      toast(err.response?.data?.message || "Cannot cancel this appointment.", "error");
+      setConfirmId(null);
+    }
   };
 
   const doReschedule = async () => {
+    if (blackouts.includes(newDate)) {
+      toast("Cannot reschedule to a blackout/holiday date. Please choose another date.", "warning");
+      return;
+    }
     try {
       await axios.patch(`/api/appointments/${reschedule}/reschedule`, {
         appt_date: newDate, appt_time: newTime
       });
-      setMsg("Appointment rescheduled!");
+      toast("Appointment rescheduled successfully!", "success");
       setReschedule(null);
       load();
-    } catch (err) { alert(err.response?.data?.message || "Cannot reschedule"); }
+    } catch (err) {
+      toast(err.response?.data?.message || "Cannot reschedule.", "error");
+    }
   };
-
-  if (loading) return <div className="spinner"/>;
 
   return (
     <div>
+      <ConfirmModal
+        isOpen={!!confirmId}
+        title="Cancel Appointment"
+        message="Are you sure you want to cancel this appointment? This cannot be undone."
+        confirmLabel="Yes, Cancel It"
+        danger={true}
+        onConfirm={confirmCancel}
+        onCancel={() => setConfirmId(null)}
+      />
       <div className="page-header">
         <h1>My Appointments</h1>
         <p>View and manage your appointment history (R5, R21)</p>
       </div>
-      {msg && <div className="alert alert-success">{msg}</div>}
       {reschedule && (
         <div style={{
           position:"fixed", top:0, left:0, right:0, bottom:0,
@@ -561,6 +663,7 @@ export function MyAppointments() {
             <div className="form-group">
               <label className="form-label">New Date</label>
               <input className="form-input" type="date" value={newDate}
+                min={new Date().toISOString().split("T")[0]}
                 onChange={e=>setNewDate(e.target.value)}/>
             </div>
             <div className="form-group">
@@ -587,42 +690,57 @@ export function MyAppointments() {
               <tr><th>Date</th><th>Time</th><th>Pet</th><th>Services</th><th>Reason</th><th>Status</th><th>Action</th></tr>
             </thead>
             <tbody>
-              {appts.length === 0 && (
-                <tr><td colSpan={7} className="text-center text-muted" style={{ padding:24 }}>No appointments found</td></tr>
-              )}
-              {appts.map(a => (
-                <tr key={a.appointment_id}>
-                  <td>{a.appt_date}</td>
-                  <td>{a.appt_time}</td>
-                  <td>
-                    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                      {localStorage.getItem(`pet_photo_${a.pet_id}`) && (
-                        <img src={localStorage.getItem(`pet_photo_${a.pet_id}`)} alt=""
-                          style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }}/>
-                      )}
-                      {a.pet_name} <span className="text-muted">({a.breed})</span>
-                    </div>
-                  </td>
-                  <td style={{ fontSize:12 }}>{a.services || "—"}</td>
-                  <td style={{ fontSize:12 }}>{a.reason_for_visit || "—"}</td>
-                  <td><span className={`badge badge-${a.status}`}>{a.status}</span></td>
-                  <td>
-                    <div className="flex-gap">
-                      {(a.status==="pending"||a.status==="confirmed") && (
-                        <>
-                          <button className="btn btn-outline btn-sm"
-                            onClick={()=>{ setReschedule(a.appointment_id); setNewDate(""); setNewTime(""); }}>
-                            Reschedule
-                          </button>
-                          <button className="btn btn-danger btn-sm" onClick={()=>cancel(a.appointment_id)}>
-                            Cancel
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {loading ? (
+                [1,2,3].map(i => <SkeletonRow key={i}/>)
+              ) : appts.length === 0 ? (
+                <tr><td colSpan={7}>
+                  <EmptyState
+                    icon={<CalendarDays size={22} color="var(--muted)"/>}
+                    title="No appointments yet"
+                    message="You haven't booked any appointments yet."
+                    action={() => navigate("/book")} actionLabel="Book Now"/>
+                </td></tr>
+              ) : appts.map(a => {
+                const petPhoto = a.pet_photo || localStorage.getItem(`pet_photo_${a.pet_id}`);
+                return (
+                  <tr key={a.appointment_id}>
+                    <td>{a.appt_date}</td>
+                    <td>{a.appt_time}</td>
+                    <td>
+                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+                        {petPhoto ? (
+                          <img src={petPhoto} alt=""
+                            style={{ width:28, height:28, borderRadius:"50%", objectFit:"cover" }}/>
+                        ) : (
+                          <div style={{ width:28, height:28, borderRadius:"50%", background:"var(--mid-gray)",
+                            display:"flex", alignItems:"center", justifyContent:"center" }}>
+                            <PawPrint size={14} color="var(--muted)"/>
+                          </div>
+                        )}
+                        {a.pet_name} <span className="text-muted">({a.breed})</span>
+                      </div>
+                    </td>
+                    <td style={{ fontSize:12 }}>{a.services || "—"}</td>
+                    <td style={{ fontSize:12 }}>{a.reason_for_visit || "—"}</td>
+                    <td><span className={`badge badge-${a.status}`}>{a.status}</span></td>
+                    <td>
+                      <div className="flex-gap">
+                        {(a.status==="pending"||a.status==="confirmed") && (
+                          <>
+                            <button className="btn btn-outline btn-sm"
+                              onClick={()=>{ setReschedule(a.appointment_id); setNewDate(""); setNewTime(""); }}>
+                              Reschedule
+                            </button>
+                            <button className="btn btn-danger btn-sm" onClick={()=>cancel(a.appointment_id)}>
+                              Cancel
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -666,8 +784,6 @@ export function ClientRecords() {
     (c.phone_number || "").includes(search)
   );
 
-  if (loading) return <div className="spinner"/>;
-
   return (
     <div>
       {selectedPet && <PetModal pet={selectedPet} onClose={() => setSelectedPet(null)}/>}
@@ -687,10 +803,16 @@ export function ClientRecords() {
               <tr><th>Name</th><th>Email</th><th>Phone</th><th>Address</th><th>Joined</th><th>Pets</th></tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
-                <tr><td colSpan={6} className="text-center text-muted" style={{ padding:24 }}>No clients found</td></tr>
-              )}
-              {filtered.map(c => (
+              {loading ? (
+                [1,2,3,4].map(i => <SkeletonRow key={i}/>)
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan={6}>
+                  <EmptyState
+                    icon={<Users size={22} color="var(--muted)"/>}
+                    title="No clients found"
+                    message="No clients match your search. Try a different keyword."/>
+                </td></tr>
+              ) : filtered.map(c => (
                 <>
                   <tr key={c.client_id}>
                     <td><strong>{c.full_name}</strong></td>
@@ -707,16 +829,26 @@ export function ClientRecords() {
                   {expanded === c.client_id && (
                     <tr key={`pets-${c.client_id}`}>
                       <td colSpan={6} style={{ background:"var(--bg)", padding:"12px 20px" }}>
-                        {!pets[c.client_id] || pets[c.client_id].length === 0
-                          ? <p className="text-muted">No pets registered yet.</p>
-                          : pets[c.client_id].map(p => (
+                        {!pets[c.client_id] || pets[c.client_id].length === 0 ? (
+                          <EmptyState
+                            icon={<PawPrint size={22} color="var(--muted)"/>}
+                            title="No pets registered yet"
+                            message="This client has not added any pets."/>
+                        ) : pets[c.client_id].map(p => {
+                          const petPhoto = p.photo || localStorage.getItem(`pet_photo_${p.pet_id}`);
+                          return (
                             <div key={p.pet_id} className="flex-between" style={{
                               padding:"10px 0", borderBottom:"1px solid var(--mid-gray)"
                             }}>
                               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                                {localStorage.getItem(`pet_photo_${p.pet_id}`) && (
-                                  <img src={localStorage.getItem(`pet_photo_${p.pet_id}`)} alt=""
+                                {petPhoto ? (
+                                  <img src={petPhoto} alt=""
                                     style={{ width:36, height:36, borderRadius:"50%", objectFit:"cover" }}/>
+                                ) : (
+                                  <div style={{ width:36, height:36, borderRadius:"50%", background:"var(--mid-gray)",
+                                    display:"flex", alignItems:"center", justifyContent:"center" }}>
+                                    <PawPrint size={16} color="var(--muted)"/>
+                                  </div>
                                 )}
                                 <div>
                                   <strong style={{ cursor:"pointer", color:"var(--crimson)" }}
@@ -738,8 +870,8 @@ export function ClientRecords() {
                                 )}
                               </div>
                             </div>
-                          ))
-                        }
+                          );
+                        })}
                       </td>
                     </tr>
                   )}
@@ -761,10 +893,17 @@ export function Notifications() {
     axios.get("/api/notifications").then(r => setNotifs(r.data)).finally(()=>setLoading(false));
   }, []);
 
-  const iconMap = { confirmation:"✓", cancellation:"✕", reminder:"!", update:"↺" };
-  const colorMap = { confirmation:"green", cancellation:"red", reminder:"amber", update:"amber" };
-
-  if (loading) return <div className="spinner"/>;
+  const iconMap = {
+    confirmation: <Check size={15}/>,
+    cancellation: <X size={15}/>,
+    reminder:     <AlertCircle size={15}/>,
+    update:       <RotateCcw size={15}/>,
+    reschedule:   <RotateCcw size={15}/>,
+  };
+  const colorMap = {
+    confirmation:"green", cancellation:"red",
+    reminder:"amber", update:"amber", reschedule:"amber"
+  };
 
   return (
     <div>
@@ -773,11 +912,25 @@ export function Notifications() {
         <p>System alerts and automated reminders (R15–R18)</p>
       </div>
       <div className="card">
-        {notifs.length === 0 && <p className="text-muted text-center" style={{ padding:24 }}>No notifications yet</p>}
-        {notifs.map(n => (
+        {loading ? (
+          [1,2,3].map(i => (
+            <div key={i} className="notif-item">
+              <Skeleton width={34} height={34} borderRadius={17} style={{ flexShrink:0 }}/>
+              <div style={{ flex:1, display:"flex", flexDirection:"column", gap:6 }}>
+                <Skeleton height={13} width="50%"/>
+                <Skeleton height={12} width="70%"/>
+              </div>
+            </div>
+          ))
+        ) : notifs.length === 0 ? (
+          <EmptyState
+            icon={<Bell size={22} color="var(--muted)"/>}
+            title="No notifications yet"
+            message="Notifications will appear here when appointments are booked, confirmed, or changed."/>
+        ) : notifs.map(n => (
           <div key={n.notif_id} className="notif-item">
             <div className={`notif-icon ${colorMap[n.type]||"green"}`}>
-              {iconMap[n.type] || "•"}
+              {iconMap[n.type] || <Info size={15}/>}
             </div>
             <div style={{ flex:1 }}>
               <div className="notif-title">{n.type?.charAt(0).toUpperCase()+n.type?.slice(1)} — {n.full_name || "Client"}</div>
@@ -792,24 +945,54 @@ export function Notifications() {
 }
 
 export function Profile() {
+  const toast = useToast();
   const [profile, setProfile] = useState({});
   const [pets, setPets] = useState([]);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState({});
-  const [msg, setMsg] = useState("");
+  const [loading, setLoading] = useState(true);
   const [selectedPet, setSelectedPet] = useState(null);
 
   useEffect(() => {
-    axios.get("/api/clients/me").then(r => { setProfile(r.data); setForm(r.data); });
-    axios.get("/api/pets").then(r => setPets(r.data));
+    Promise.all([
+      axios.get("/api/clients/me"),
+      axios.get("/api/pets")
+    ]).then(([profileRes, petsRes]) => {
+      setProfile(profileRes.data);
+      setForm(profileRes.data);
+      setPets(petsRes.data);
+    }).finally(() => setLoading(false));
   }, []);
 
   const save = async () => {
-    await axios.put("/api/clients/me", form);
-    setProfile(form); setEditing(false);
-    setMsg("Profile updated!");
-    setTimeout(()=>setMsg(""), 3000);
+    try {
+      await axios.put("/api/clients/me", form);
+      setProfile(form); setEditing(false);
+      toast("Profile updated successfully!", "success");
+    } catch (err) {
+      toast(err.response?.data?.message || "Update failed.", "error");
+    }
   };
+
+  if (loading) return (
+    <div>
+      <div className="page-header"><h1>My Profile</h1></div>
+      <div className="two-col">
+        <div className="card" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          <Skeleton height={64} width={64} borderRadius={32} style={{ margin:"0 auto" }}/>
+          <Skeleton height={18} width="50%" style={{ margin:"0 auto" }}/>
+          <Skeleton height={13}/>
+          <Skeleton height={13}/>
+          <Skeleton height={13} width="80%"/>
+        </div>
+        <div className="card" style={{ display:"flex", flexDirection:"column", gap:14 }}>
+          <Skeleton height={16} width="40%"/>
+          <Skeleton height={50}/>
+          <Skeleton height={50}/>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -818,7 +1001,6 @@ export function Profile() {
         <h1>My Profile</h1>
         <p>View and manage your account information (R6, R27)</p>
       </div>
-      {msg && <div className="alert alert-success">{msg}</div>}
       <div className="two-col">
         <div className="card">
           <div style={{ textAlign:"center", marginBottom:20 }}>
@@ -838,8 +1020,14 @@ export function Profile() {
               </div>
               <div className="form-group">
                 <label className="form-label">Phone</label>
-                <input className="form-input" value={form.phone_number||""}
-                  onChange={e=>setForm(f=>({...f,phone_number:e.target.value}))}/>
+                <input className="form-input"
+                  type="tel" maxLength={11}
+                  value={form.phone_number||""}
+                  onChange={e => {
+                    const val = e.target.value.replace(/\D/g, "").slice(0, 11);
+                    setForm(f=>({...f, phone_number: val}));
+                  }}
+                  placeholder="09XXXXXXXXX"/>
               </div>
               <div className="form-group">
                 <label className="form-label">Address</label>
@@ -866,35 +1054,43 @@ export function Profile() {
         <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
           <div className="card">
             <div className="card-title">My Pets (R7)</div>
-            {pets.length === 0 && <p className="text-muted">No pets registered yet. Add a pet when booking.</p>}
-            {pets.map(p => (
-              <div key={p.pet_id} className="flex-between" style={{ padding:"10px 0", borderBottom:"1px solid var(--mid-gray)" }}>
-                <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                  {localStorage.getItem(`pet_photo_${p.pet_id}`) ? (
-                    <img src={localStorage.getItem(`pet_photo_${p.pet_id}`)} alt=""
-                      style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover",
-                        border:"2px solid var(--crimson)", cursor:"pointer" }}
-                      onClick={() => setSelectedPet(p)}/>
-                  ) : (
-                    <div style={{ width:40, height:40, borderRadius:"50%", background:"var(--mid-gray)",
-                      display:"flex", alignItems:"center", justifyContent:"center",
-                      fontSize:18, cursor:"pointer" }}
-                      onClick={() => setSelectedPet(p)}>🐾</div>
-                  )}
-                  <div>
-                    <strong style={{ cursor:"pointer", color:"var(--crimson)" }}
-                      onClick={() => setSelectedPet(p)}>{p.pet_name}</strong>
-                    <div className="text-muted">{p.type} · {p.breed}</div>
+            {pets.length === 0 ? (
+              <EmptyState
+                icon={<PawPrint size={22} color="var(--muted)"/>}
+                title="No pets yet"
+                message="Add a pet when booking your first appointment."/>
+            ) : pets.map(p => {
+              const petPhoto = p.photo || localStorage.getItem(`pet_photo_${p.pet_id}`);
+              return (
+                <div key={p.pet_id} className="flex-between" style={{ padding:"10px 0", borderBottom:"1px solid var(--mid-gray)" }}>
+                  <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+                    {petPhoto ? (
+                      <img src={petPhoto} alt=""
+                        style={{ width:40, height:40, borderRadius:"50%", objectFit:"cover",
+                          border:"2px solid var(--crimson)", cursor:"pointer" }}
+                        onClick={() => setSelectedPet(p)}/>
+                    ) : (
+                      <div style={{ width:40, height:40, borderRadius:"50%", background:"var(--mid-gray)",
+                        display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer" }}
+                        onClick={() => setSelectedPet(p)}>
+                        <PawPrint size={18} color="var(--muted)"/>
+                      </div>
+                    )}
+                    <div>
+                      <strong style={{ cursor:"pointer", color:"var(--crimson)" }}
+                        onClick={() => setSelectedPet(p)}>{p.pet_name}</strong>
+                      <div className="text-muted">{p.type} · {p.breed}</div>
+                    </div>
+                  </div>
+                  <div className="flex-gap">
+                    <button className="btn btn-outline btn-sm" onClick={() => setSelectedPet(p)}>View</button>
+                    <span className={`badge ${p.registered_in_clinic?"badge-confirmed":"badge-pending"}`}>
+                      {p.registered_in_clinic?"Registered":"Unregistered"}
+                    </span>
                   </div>
                 </div>
-                <div className="flex-gap">
-                  <button className="btn btn-outline btn-sm" onClick={() => setSelectedPet(p)}>View</button>
-                  <span className={`badge ${p.registered_in_clinic?"badge-confirmed":"badge-pending"}`}>
-                    {p.registered_in_clinic?"Registered":"Unregistered"}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
@@ -952,31 +1148,35 @@ export function Report() {
             Total: {rows.length}
           </div>
         </div>
-        {loading ? <div className="spinner"/> : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr><th>Date</th><th>Time</th><th>Client</th><th>Pet / Breed</th><th>Services</th><th>Reason</th><th>Status</th></tr>
-              </thead>
-              <tbody>
-                {rows.length === 0 && (
-                  <tr><td colSpan={7} className="text-center text-muted" style={{ padding:24 }}>No appointments found</td></tr>
-                )}
-                {rows.map(r => (
-                  <tr key={r.appointment_id}>
-                    <td>{r.appt_date}</td>
-                    <td>{r.appt_time}</td>
-                    <td><strong>{r.client_name}</strong></td>
-                    <td>{r.pet_name} <span className="text-muted">({r.breed})</span></td>
-                    <td style={{ fontSize:12 }}>{r.services||"—"}</td>
-                    <td style={{ fontSize:12 }}>{r.reason_for_visit||"—"}</td>
-                    <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <div className="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Time</th><th>Client</th><th>Pet / Breed</th><th>Services</th><th>Reason</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                [1,2,3,4].map(i => <SkeletonRow key={i}/>)
+              ) : rows.length === 0 ? (
+                <tr><td colSpan={7}>
+                  <EmptyState
+                    icon={<ClipboardList size={22} color="var(--muted)"/>}
+                    title="No appointments found"
+                    message="No appointments recorded for this period."/>
+                </td></tr>
+              ) : rows.map(r => (
+                <tr key={r.appointment_id}>
+                  <td>{r.appt_date}</td>
+                  <td>{r.appt_time}</td>
+                  <td><strong>{r.client_name}</strong></td>
+                  <td>{r.pet_name} <span className="text-muted">({r.breed})</span></td>
+                  <td style={{ fontSize:12 }}>{r.services||"—"}</td>
+                  <td style={{ fontSize:12 }}>{r.reason_for_visit||"—"}</td>
+                  <td><span className={`badge badge-${r.status}`}>{r.status}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -986,15 +1186,19 @@ export function ClientHome() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const [appts, setAppts] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get("/api/appointments").then(r => setAppts(r.data));
+    axios.get("/api/appointments").then(r => setAppts(r.data)).finally(()=>setLoading(false));
   }, []);
 
   return (
     <div>
       <div className="page-header">
-        <h1>Welcome, {user?.name?.split(" ")[0]}! 🐾</h1>
+        <h1 style={{ display:"flex", alignItems:"center", gap:10 }}>
+          Welcome, {user?.name?.split(" ")[0]}!
+          <PawPrint size={22} color="var(--crimson)"/>
+        </h1>
         <p>Manage your pet appointments at Clinica Veterinaria de Figura</p>
       </div>
       <div className="stats-grid" style={{ gridTemplateColumns:"repeat(3,1fr)" }}>
@@ -1010,19 +1214,42 @@ export function ClientHome() {
         </div>
         <div className="stat-card amber" style={{ cursor:"pointer" }} onClick={()=>navigate("/my-appointments")}>
           <div className="stat-label">My Appointments</div>
-          <div className="stat-value">{appts.length}</div>
+          <div className="stat-value">{loading ? "—" : appts.length}</div>
         </div>
       </div>
       <div className="card" style={{ marginTop:0 }}>
         <div className="card-title">Recent Appointments</div>
-        {appts.length === 0
-          ? <p className="text-muted">No appointments yet. <span className="auth-link" onClick={()=>navigate("/book")}>Book your first one!</span></p>
-          : appts.map(a => (
+        {loading ? (
+          [1,2,3].map(i => (
+            <div key={i} className="flex-between" style={{ padding:"12px 0", borderBottom:"1px solid var(--mid-gray)" }}>
+              <div style={{ display:"flex", alignItems:"center", gap:10, flex:1 }}>
+                <Skeleton width={32} height={32} borderRadius={16} style={{ flexShrink:0 }}/>
+                <div style={{ flex:1 }}>
+                  <Skeleton height={14} width="50%" style={{ marginBottom:6 }}/>
+                  <Skeleton height={12} width="70%"/>
+                </div>
+              </div>
+            </div>
+          ))
+        ) : appts.length === 0 ? (
+          <EmptyState
+            icon={<CalendarDays size={22} color="var(--muted)"/>}
+            title="No appointments yet"
+            message="You haven't booked any appointments yet."
+            action={() => navigate("/book")} actionLabel="Book Your First Appointment"/>
+        ) : appts.map(a => {
+          const petPhoto = a.pet_photo || localStorage.getItem(`pet_photo_${a.pet_id}`);
+          return (
             <div key={a.appointment_id} className="flex-between" style={{ padding:"12px 0", borderBottom:"1px solid var(--mid-gray)" }}>
               <div style={{ display:"flex", alignItems:"center", gap:10 }}>
-                {localStorage.getItem(`pet_photo_${a.pet_id}`) && (
-                  <img src={localStorage.getItem(`pet_photo_${a.pet_id}`)} alt=""
+                {petPhoto ? (
+                  <img src={petPhoto} alt=""
                     style={{ width:32, height:32, borderRadius:"50%", objectFit:"cover" }}/>
+                ) : (
+                  <div style={{ width:32, height:32, borderRadius:"50%", background:"var(--mid-gray)",
+                    display:"flex", alignItems:"center", justifyContent:"center" }}>
+                    <PawPrint size={15} color="var(--muted)"/>
+                  </div>
                 )}
                 <div>
                   <strong>{a.appt_date} at {a.appt_time}</strong>
@@ -1036,8 +1263,8 @@ export function ClientHome() {
                 </button>
               </div>
             </div>
-          ))
-        }
+          );
+        })}
       </div>
     </div>
   );

@@ -200,6 +200,15 @@ router.patch("/:id/cancel", auth, async (req, res) => {
 // PATCH /api/appointments/:id/reschedule (R21)
 router.patch("/:id/reschedule", auth, async (req, res) => {
   const { appt_date, appt_time } = req.body;
+
+  // ✅ BUG 1 FIX: Reject past dates
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const newApptDate = new Date(appt_date);
+  if (newApptDate < today) {
+    return res.status(400).json({ message: "Cannot reschedule to a past date. Please choose a future date." });
+  }
+
   const [rows] = await db.query(
     "SELECT * FROM appointment WHERE appointment_id=? AND client_id=?",
     [req.params.id, req.user.id]
@@ -211,19 +220,36 @@ router.patch("/:id/reschedule", auth, async (req, res) => {
   if (hoursUntil < 24)
     return res.status(400).json({ message: "Reschedule must be at least 24 hours in advance (R21)" });
 
-  // ✅ CHECK: Blackout date on reschedule too
+  // ✅ BUG 3: Blackout date check
   const [blk] = await db.query(
     "SELECT * FROM blackout_date WHERE blackout_date=?", [appt_date]
   );
   if (blk.length) return res.status(400).json({ message: "Cannot reschedule to a blackout date. Please choose another date." });
 
+  // ✅ BUG 2 FIX: Check if new slot is already taken (exclude current appointment)
+  const [taken] = await db.query(
+    "SELECT * FROM appointment WHERE appt_date=? AND appt_time=? AND status != 'cancelled' AND appointment_id != ?",
+    [appt_date, appt_time, req.params.id]
+  );
+  if (taken.length) return res.status(409).json({ message: "This time slot is already taken. Please choose another." });
+
   await db.query(
     "UPDATE appointment SET appt_date=?, appt_time=?, status='pending' WHERE appointment_id=?",
     [appt_date, appt_time, req.params.id]
   );
+
+  // ✅ BUG 5 FIX: Insert reschedule notification record
+  await db.query(
+    `INSERT INTO notification (appointment_id,client_id,type,message,sent_at)
+     VALUES (?,?,'reschedule',?,NOW())`,
+    [req.params.id, req.user.id, `Appointment rescheduled to ${appt_date} at ${appt_time}`]
+  );
+
   try {
     const [clientRows] = await db.query("SELECT * FROM client WHERE client_id=?", [req.user.id]);
     const client = clientRows[0];
+
+    // Client confirmation email
     await sendAppointmentEmail(
       client.email,
       client.full_name,
@@ -231,6 +257,21 @@ router.patch("/:id/reschedule", auth, async (req, res) => {
       `Your appointment has been rescheduled to <strong>${appt_date} at ${appt_time}</strong>.<br><br>
        We look forward to seeing you and your pet!`
     );
+
+    // ✅ BUG 5 FIX: Notify admin of reschedule
+    const [admins] = await db.query("SELECT * FROM admin LIMIT 1");
+    if (admins.length) {
+      await sendAppointmentEmail(
+        admins[0].email,
+        admins[0].full_name,
+        "Appointment Rescheduled by Client",
+        `A client has rescheduled their appointment.<br><br>
+         <strong>Client:</strong> ${client.full_name}<br>
+         <strong>New Date:</strong> ${appt_date}<br>
+         <strong>New Time:</strong> ${appt_time}<br>
+         <strong>Status:</strong> Pending re-approval`
+      );
+    }
   } catch (emailErr) {
     console.error("Email error:", emailErr.message);
   }
